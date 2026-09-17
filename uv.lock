@@ -24,6 +24,7 @@ members = [
     "models",
     "nemo-agent-config-example-calculator",
     "nemo-agent-hardener-plugin",
+    "nemo-agent-optimization-plugin",
     "nemo-agents-example-calculator",
     "nemo-agents-example-email-phishing",
     "nemo-agents-example-email-security",
@@ -4111,6 +4112,29 @@ dev = [
 ]
 
 [[package]]
+name = "nemo-agent-optimization-plugin"
+version = "0.1.0"
+source = { editable = "plugins/nemo-agent-optimization" }
+dependencies = [
+    { name = "nemo-optimization-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "nemo-platform", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "nemo-platform-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "pydantic", extra = ["email"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "pyyaml", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "typer", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "nemo-optimization-plugin", editable = "plugins/nemo-optimization" },
+    { name = "nemo-platform", editable = "packages/nemo_platform" },
+    { name = "nemo-platform-plugin", editable = "packages/nemo_platform_plugin" },
+    { name = "pydantic", specifier = ">=2.12.0" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
+    { name = "typer", specifier = ">=0.20.0" },
+]
+
+[[package]]
 name = "nemo-agents-example-calculator"
 version = "0.0.0"
 source = { editable = "plugins/nemo-agents/examples/calculator-agent" }
@@ -4159,6 +4183,7 @@ dependencies = [
     { name = "httpx", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "jinja2", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "langchain-aws", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "nemo-agent-optimization-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-agents-example-calculator", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-agents-example-email-phishing", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-agents-example-email-security", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -4201,6 +4226,7 @@ requires-dist = [
     { name = "jinja2", specifier = ">=3.1" },
     { name = "jinja2", marker = "extra == 'test'", specifier = ">=3.1" },
     { name = "langchain-aws", specifier = "==1.1.0" },
+    { name = "nemo-agent-optimization-plugin", editable = "plugins/nemo-agent-optimization" },
     { name = "nemo-agents-example-calculator", editable = "plugins/nemo-agents/examples/calculator-agent" },
     { name = "nemo-agents-example-email-phishing", editable = "plugins/nemo-agents/examples/email-phishing-analyzer" },
     { name = "nemo-agents-example-email-security", editable = "plugins/nemo-agents/examples/email-security-analyst" },
@@ -4940,6 +4966,7 @@ version = "0.0.0"
 source = { editable = "plugins/nemo-optimization" }
 dependencies = [
     { name = "matplotlib", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "nemo-agent-optimization-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-evaluator-sdk", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -4961,6 +4988,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "matplotlib", specifier = ">=3.8.0" },
+    { name = "nemo-agent-optimization-plugin", editable = "plugins/nemo-agent-optimization" },
     { name = "nemo-evaluator-sdk", editable = "packages/nemo_evaluator_sdk" },
     { name = "nemo-platform", editable = "packages/nemo_platform" },
     { name = "nemo-platform-plugin", editable = "packages/nemo_platform_plugin" },
@@ -5034,6 +5062,7 @@ all = [
     { name = "langchain-openai", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "lark", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "matplotlib", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "nemo-agent-optimization-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-agents-example-calculator", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-anonymizer", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-auditor-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -5285,6 +5314,13 @@ models-service = [
     { name = "urllib3", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "uvicorn", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
+nemo-agent-optimization-plugin = [
+    { name = "nemo-optimization-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "nemo-platform-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "pydantic", extra = ["email"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "pyyaml", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "typer", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+]
 nemo-agents-example-calculator = [
     { name = "nvidia-nat-core", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nvidia-nat-langchain", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -5297,6 +5333,7 @@ nemo-agents-plugin = [
     { name = "httpx", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "jinja2", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "langchain-aws", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "nemo-agent-optimization-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-agents-example-calculator", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-deployments-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-fabric", extra = ["claude", "codex", "relay"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -5391,6 +5428,7 @@ nemo-evaluator-sdk = [
 nemo-experimentalist-plugin = [
     { name = "harbor", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "httpx", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "nemo-agent-optimization-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-evaluator-sdk", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-insights-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -5426,6 +5464,7 @@ nemo-insights-plugin = [
 ]
 nemo-optimization-plugin = [
     { name = "matplotlib", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "nemo-agent-optimization-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-evaluator-sdk", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "numpy", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -5491,6 +5530,7 @@ nemo-safe-synthesizer-plugin = [
     { name = "uvicorn", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
 nemo-switchyard = [
+    { name = "nemo-agent-optimization-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "switchyard-vendored", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
@@ -5568,6 +5608,7 @@ plugins = [
     { name = "langchain-core", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "langchain-openai", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "matplotlib", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "nemo-agent-optimization-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-agents-example-calculator", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-anonymizer", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-deployments-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -5671,6 +5712,7 @@ services = [
     { name = "langchain-openai", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "lark", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "matplotlib", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "nemo-agent-optimization-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-agents-example-calculator", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-anonymizer", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-auditor-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -6030,6 +6072,13 @@ requires-dist = [
     { name = "matplotlib", marker = "extra == 'nemo-optimization-plugin'", specifier = ">=3.8.0" },
     { name = "matplotlib", marker = "extra == 'plugins'", specifier = ">=3.8.0" },
     { name = "matplotlib", marker = "extra == 'services'", specifier = ">=3.8.0" },
+    { name = "nemo-agent-optimization-plugin", marker = "extra == 'all'", editable = "plugins/nemo-agent-optimization" },
+    { name = "nemo-agent-optimization-plugin", marker = "extra == 'nemo-agents-plugin'", editable = "plugins/nemo-agent-optimization" },
+    { name = "nemo-agent-optimization-plugin", marker = "extra == 'nemo-experimentalist-plugin'", editable = "plugins/nemo-agent-optimization" },
+    { name = "nemo-agent-optimization-plugin", marker = "extra == 'nemo-optimization-plugin'", editable = "plugins/nemo-agent-optimization" },
+    { name = "nemo-agent-optimization-plugin", marker = "extra == 'nemo-switchyard'", editable = "plugins/nemo-agent-optimization" },
+    { name = "nemo-agent-optimization-plugin", marker = "extra == 'plugins'", editable = "plugins/nemo-agent-optimization" },
+    { name = "nemo-agent-optimization-plugin", marker = "extra == 'services'", editable = "plugins/nemo-agent-optimization" },
     { name = "nemo-agents-example-calculator", marker = "extra == 'all'", editable = "plugins/nemo-agents/examples/calculator-agent" },
     { name = "nemo-agents-example-calculator", marker = "extra == 'nemo-agents-plugin'", editable = "plugins/nemo-agents/examples/calculator-agent" },
     { name = "nemo-agents-example-calculator", marker = "extra == 'plugins'", editable = "plugins/nemo-agents/examples/calculator-agent" },
@@ -6077,6 +6126,7 @@ requires-dist = [
     { name = "nemo-insights-plugin", marker = "extra == 'plugins'", editable = "plugins/nemo-insights" },
     { name = "nemo-insights-plugin", marker = "extra == 'services'", editable = "plugins/nemo-insights" },
     { name = "nemo-optimization-plugin", marker = "extra == 'all'", editable = "plugins/nemo-optimization" },
+    { name = "nemo-optimization-plugin", marker = "extra == 'nemo-agent-optimization-plugin'", editable = "plugins/nemo-optimization" },
     { name = "nemo-optimization-plugin", marker = "extra == 'nemo-agents-plugin'", editable = "plugins/nemo-optimization" },
     { name = "nemo-optimization-plugin", marker = "extra == 'plugins'", editable = "plugins/nemo-optimization" },
     { name = "nemo-optimization-plugin", marker = "extra == 'services'", editable = "plugins/nemo-optimization" },
@@ -6087,6 +6137,7 @@ requires-dist = [
     { name = "nemo-platform-plugin", marker = "extra == 'inference-gateway-service'", editable = "packages/nemo_platform_plugin" },
     { name = "nemo-platform-plugin", marker = "extra == 'jobs-service'", editable = "packages/nemo_platform_plugin" },
     { name = "nemo-platform-plugin", marker = "extra == 'models-service'", editable = "packages/nemo_platform_plugin" },
+    { name = "nemo-platform-plugin", marker = "extra == 'nemo-agent-optimization-plugin'", editable = "packages/nemo_platform_plugin" },
     { name = "nemo-platform-plugin", marker = "extra == 'nemo-agents-plugin'", editable = "packages/nemo_platform_plugin" },
     { name = "nemo-platform-plugin", marker = "extra == 'nemo-anonymizer-plugin'", editable = "packages/nemo_platform_plugin" },
     { name = "nemo-platform-plugin", marker = "extra == 'nemo-auditor-plugin'", editable = "packages/nemo_platform_plugin" },
@@ -6326,6 +6377,7 @@ requires-dist = [
     { name = "pydantic", marker = "extra == 'intake-service'", specifier = ">=2.9.2,<3.0.0" },
     { name = "pydantic", marker = "extra == 'jobs-service'", specifier = ">=2.10.6" },
     { name = "pydantic", marker = "extra == 'models-service'", specifier = ">=2.10.6" },
+    { name = "pydantic", marker = "extra == 'nemo-agent-optimization-plugin'", specifier = ">=2.12.0" },
     { name = "pydantic", marker = "extra == 'nemo-auditor-plugin'", specifier = ">=2.10.6" },
     { name = "pydantic", marker = "extra == 'nemo-automodel-plugin'", specifier = ">=2.10.6" },
     { name = "pydantic", marker = "extra == 'nemo-customizer-plugin'", specifier = ">=2.10.6" },
@@ -6414,6 +6466,7 @@ requires-dist = [
     { name = "pyyaml", marker = "extra == 'inference-gateway-service'", specifier = ">=6.0.2" },
     { name = "pyyaml", marker = "extra == 'jobs-service'", specifier = ">=6.0.2" },
     { name = "pyyaml", marker = "extra == 'models-service'", specifier = ">=6.0.2" },
+    { name = "pyyaml", marker = "extra == 'nemo-agent-optimization-plugin'", specifier = ">=6.0.3" },
     { name = "pyyaml", marker = "extra == 'nemo-agents-plugin'", specifier = ">=6.0" },
     { name = "pyyaml", marker = "extra == 'nemo-anonymizer-plugin'", specifier = ">=6.0.2" },
     { name = "pyyaml", marker = "extra == 'nemo-auditor-plugin'", specifier = ">=6.0.2" },
@@ -6482,6 +6535,7 @@ requires-dist = [
     { name = "typer", marker = "extra == 'all'", specifier = ">=0.9.0" },
     { name = "typer", marker = "extra == 'all'", specifier = ">=0.12.5" },
     { name = "typer", marker = "extra == 'all'", specifier = ">=0.20.0" },
+    { name = "typer", marker = "extra == 'nemo-agent-optimization-plugin'", specifier = ">=0.20.0" },
     { name = "typer", marker = "extra == 'nemo-auditor-plugin'", specifier = ">=0.20.0" },
     { name = "typer", marker = "extra == 'nemo-automodel-plugin'", specifier = ">=0.12.5" },
     { name = "typer", marker = "extra == 'nemo-customizer-plugin'", specifier = ">=0.12.5" },
@@ -6547,7 +6601,7 @@ requires-dist = [
     { name = "yara-python", marker = "extra == 'guardrails-service'", specifier = "==4.5.1" },
     { name = "yara-python", marker = "extra == 'services'", specifier = "==4.5.1" },
 ]
-provides-extras = ["aiohttp", "all", "auditor-service", "auth-service", "automodel-service", "core-service", "data-designer-nemo", "entities-service", "files-service", "guardrails-service", "hello-world-service", "inference-gateway-service", "intake-service", "jobs-service", "models-service", "nemo-agents-example-calculator", "nemo-agents-plugin", "nemo-anonymizer-plugin", "nemo-auditor-plugin", "nemo-automodel-plugin", "nemo-customizer-plugin", "nemo-data-designer-plugin", "nemo-deployments-plugin", "nemo-evaluator-plugin", "nemo-evaluator-sdk", "nemo-experimentalist-plugin", "nemo-guardrails-plugin", "nemo-insights-plugin", "nemo-optimization-plugin", "nemo-platform-plugin", "nemo-platform-sdk", "nemo-rl-plugin", "nemo-safe-synthesizer-plugin", "nemo-switchyard", "nemo-unsloth-plugin", "nmp-common", "nmp-customization-common", "platform-seed-service", "plugins", "rl-service", "secrets-service", "services", "studio-service", "switchyard-vendored", "unsloth-service"]
+provides-extras = ["aiohttp", "all", "auditor-service", "auth-service", "automodel-service", "core-service", "data-designer-nemo", "entities-service", "files-service", "guardrails-service", "hello-world-service", "inference-gateway-service", "intake-service", "jobs-service", "models-service", "nemo-agent-optimization-plugin", "nemo-agents-example-calculator", "nemo-agents-plugin", "nemo-anonymizer-plugin", "nemo-auditor-plugin", "nemo-automodel-plugin", "nemo-customizer-plugin", "nemo-data-designer-plugin", "nemo-deployments-plugin", "nemo-evaluator-plugin", "nemo-evaluator-sdk", "nemo-experimentalist-plugin", "nemo-guardrails-plugin", "nemo-insights-plugin", "nemo-optimization-plugin", "nemo-platform-plugin", "nemo-platform-sdk", "nemo-rl-plugin", "nemo-safe-synthesizer-plugin", "nemo-switchyard", "nemo-unsloth-plugin", "nmp-common", "nmp-customization-common", "platform-seed-service", "plugins", "rl-service", "secrets-service", "services", "studio-service", "switchyard-vendored", "unsloth-service"]
 
 [[package]]
 name = "nemo-platform-ext"
@@ -7278,6 +7332,7 @@ core-services = [
     { name = "nmp-secrets", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
 cpu-tasks = [
+    { name = "nemo-agent-optimization-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-agents-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-anonymizer-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-data-designer-plugin", extra = ["retrieval-sdg"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -7510,6 +7565,7 @@ core-services = [
     { name = "nmp-secrets", editable = "services/core/secrets" },
 ]
 cpu-tasks = [
+    { name = "nemo-agent-optimization-plugin", editable = "plugins/nemo-agent-optimization" },
     { name = "nemo-agents-plugin", editable = "plugins/nemo-agents" },
     { name = "nemo-anonymizer-plugin", editable = "plugins/nemo-anonymizer" },
     { name = "nemo-data-designer-plugin", extras = ["retrieval-sdg"], editable = "plugins/nemo-data-designer" },

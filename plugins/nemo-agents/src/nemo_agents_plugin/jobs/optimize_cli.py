@@ -114,9 +114,11 @@ def register_prepare_fileset_command(group: typer.Typer) -> None:
         typer.echo("Submit the study with:\n")
         typer.echo(
             f"  nemo agents optimize \\\n"
+            f"    --strategy nat \\\n"
+            f"    --agent {agent or '<agent-name>'} \\\n"
             f"    --optimize-config-fileset {ws}/{name} \\\n"
             f"    --optimize-config {optimize_config} \\\n"
-            + (f"    --agent {agent} \\\n" if agent else "")
+            + "    --output-agent <new-agent-name> \\\n"
             + f"    --workspace {workspace}"
         )
 
@@ -128,11 +130,11 @@ def _preflight_models(config: dict[str, Any], *, workspace: str, agent: str | No
     is not a reason to refuse to stage the bundle: the model may be created between staging and
     submit, and ``--no-check-models`` should not be the price of an offline `prepare-fileset`.
     """
-    from nemo_optimization.agents import resolve_agent_config
+    from nemo_agent_optimization_plugin.job_base import fetch_agent_config
     from nemo_optimization.preflight import preflight_validate_llm_models
 
     try:
-        agent_config = resolve_agent_config(agent, workspace=workspace, sdk=sdk)
+        agent_config = fetch_agent_config(agent, workspace=workspace, sdk=sdk) if agent else None
         preflight_validate_llm_models(config, workspace=workspace, sdk=sdk, agent_config=agent_config)
     except Exception as exc:
         typer.echo(f"Warning: model preflight did not pass: {exc}", err=True)

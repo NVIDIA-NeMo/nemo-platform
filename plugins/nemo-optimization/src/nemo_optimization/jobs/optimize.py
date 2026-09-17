@@ -14,16 +14,17 @@ import copy
 import logging
 import os
 import re
-import shutil
 from collections.abc import Iterator, Mapping
 from pathlib import Path, PurePosixPath
 from typing import Any, ClassVar, cast
 
 import yaml
+from nemo_agent_optimization_plugin.job_base import AgentOptimizeJob, fetch_agent_config
+from nemo_agent_optimization_plugin.registration import register_optimized_agent
+from nemo_agent_optimization_plugin.schemas.optimize import AgentOptimizeSpec
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import InternalServerError, NemoResponseValidationError, NemoTransportError
-from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
 from nemo_platform_plugin.jobs.api_factory import (
     ContainerSpec,
@@ -41,17 +42,14 @@ from nemo_platform_plugin.jobs.execution_profiles import SubprocessJobExecutionP
 from nemo_platform_plugin.jobs.image import get_qualified_image
 from nemo_platform_plugin.refs import (
     FILESET_REF_PATTERN,
-    FilesetRef,
-    LocalDir,
-    classify_output_target,
 )
-from nemo_platform_plugin.run_dependencies import LocalRunError
 from pydantic import BaseModel
 
-from nemo_optimization.agents import resolve_agent_config
+from nemo_optimization.agents import _to_fabric_agent_package
+from nemo_optimization.backends.optuna.search_space import parse_search_space, suggestions_by_path
 from nemo_optimization.preflight import preflight_validate_llm_models
 from nemo_optimization.router import OptimizeRouter
-from nemo_optimization.schemas.optimize import FILESET_REQUIRED, OptimizeSpec, OptimizeSubmitSpec
+from nemo_optimization.schemas.optimize import FILESET_REQUIRED, OptimizeSubmitSpec
 
 logger = logging.getLogger(__name__)
 
@@ -66,16 +64,17 @@ OPTIMIZE_COMMAND = [OPTIMIZE_TASK_MODULE]
 OPTIMIZE_TASK_IMAGE = "nmp-cpu-tasks"
 
 
-class OptimizeJob(NemoJob):
+class OptimizeJob(AgentOptimizeJob):
     """Run a Fabric-native numeric optimize study via the Agents optimize job."""
 
     name: ClassVar[str] = "optimize"
+    #: Unique name for the agent optimization strategy provided by this job. Selected by `nemo agents optimize --strategy`
+    strategy: ClassVar[str] = "nat"
     description: ClassVar[str] = "Optimize a Fabric agent workflow (numeric HPO)."
     container: ClassVar[str] = "cpu-tasks"
     job_collection_path: ClassVar[str | None] = None
     generate_legacy_verbs: ClassVar[bool] = False
-    spec_schema: ClassVar[type[BaseModel]] = OptimizeSpec
-    input_spec_schema: ClassVar[type[BaseModel]] = OptimizeSubmitSpec
+    spec_schema: ClassVar[type[BaseModel]] = AgentOptimizeSpec
 
     @classmethod
     async def to_spec(  # ty: ignore[invalid-method-override]
@@ -85,19 +84,18 @@ class OptimizeJob(NemoJob):
         workspace: str,
         entity_client: object,
         async_sdk: AsyncNeMoPlatform,
-        is_local: bool,
-    ) -> OptimizeSpec:
+    ) -> AgentOptimizeSpec:
         del entity_client, async_sdk
         payload = input_spec.model_dump(mode="json")
         payload["workspace"] = workspace
-        return OptimizeSpec.model_validate(payload, context={"is_local": is_local})
+        return AgentOptimizeSpec.model_validate(payload)
 
     @classmethod
-    async def compile(  # ty: ignore[invalid-method-override]
+    async def compile(
         cls,
         *,
         workspace: str,
-        spec: OptimizeSpec,
+        spec: AgentOptimizeSpec,
         entity_client: object,
         job_name: str | None,
         async_sdk: object,
@@ -138,10 +136,13 @@ class OptimizeJob(NemoJob):
         )
 
     def run(self, config: dict, *, ctx: JobContext, sdk: NeMoPlatform | None = None) -> dict:
-        spec = OptimizeSpec.model_validate(config)
+        spec = AgentOptimizeSpec.model_validate(config)
         with _staged_bundle(spec, ctx=ctx, sdk=sdk) as (config_path, bundle_root):
             optimize_config = _load_yaml(config_path)
-            agent_config = resolve_agent_config(spec.agent, workspace=spec.workspace, sdk=sdk)
+            # The study runs against the Fabric package, but the optimized agent is persisted as
+            # the platform spec, so both shapes are needed — from one fetch.
+            source_agent_config = fetch_agent_config(spec.agent, workspace=spec.workspace, sdk=sdk)
+            agent_config = _to_fabric_agent_package(source_agent_config, label=spec.agent)
             preflight_validate_llm_models(
                 optimize_config,
                 workspace=spec.workspace,
@@ -165,8 +166,16 @@ class OptimizeJob(NemoJob):
                     sdk=sdk,
                 )
 
-        published = _publish_results(spec.output, workspace=spec.workspace, ctx=ctx, sdk=sdk)
-        return result if published is None else {**result, "output": published}
+        optimized = _apply_tuned_params(source_agent_config, optimize_config, result)
+        registered = register_optimized_agent(
+            optimized,
+            name=spec.output_agent,
+            source_agent=spec.agent,
+            source_workspace=spec.workspace,
+            workspace=spec.workspace,
+            sdk=sdk,
+        )
+        return {**result, **registered}
 
 
 def _profiles_unavailable(profile: str) -> PlatformJobDependencyUnavailableError:
@@ -226,7 +235,7 @@ async def _resolve_executor(*, profile: str, async_sdk: object) -> ExecutorSpec:
 
 @contextlib.contextmanager
 def _staged_bundle(
-    spec: OptimizeSpec,
+    spec: AgentOptimizeSpec,
     *,
     ctx: JobContext,
     sdk: NeMoPlatform | None,
@@ -360,62 +369,55 @@ def _with_dataset_path(optimize_config: dict[str, Any], local_path: str) -> dict
     return updated
 
 
-def _publish_results(
-    output: str | None,
-    *,
-    workspace: str,
-    ctx: JobContext,
-    sdk: NeMoPlatform | None,
-) -> dict[str, str] | None:
-    """Copy the study's artifacts to *output*, returning a pointer for the job result.
+#: Search-space leaves this job knows how to put back onto a platform agent spec.  The
+#: study tunes the Fabric package, where the selected harness's model is synthesized as
+#: ``models.default``; on the stored spec that value lives on the harness itself.  Only
+#: fields ``ModelConfig`` actually declares are eligible — it is ``extra="forbid"``, and a
+#: leaf like ``top_p`` has no home there, so applying it would either fail validation or
+#: land somewhere the harness never reads.
+_TUNABLE_MODEL_FIELDS = frozenset({"temperature"})
 
-    The backends write everything under ``ctx.storage.persistent / "results"``
-    and register it via ``ctx.results.save``, which on the platform lands in the
-    job's own fileset under ``results/<attempt_id>/``.  That is addressable only
-    through the typed Jobs results client, so a remote client that wants to read the
-    optimized config back — or hand it to a follow-up job — needs a stable
-    location it names up front.  Publishing the whole ``results`` tree keeps
-    this backend-agnostic: no ``RESULT_NAME`` coupling, and the ``ga`` backend
-    gets it for free.
+_FABRIC_DEFAULT_MODEL_PREFIX = "models.default."
 
-    Returns ``None`` when no target was requested.
+
+def _apply_tuned_params(
+    source_agent_config: dict[str, Any],
+    optimize_config: Mapping[str, Any],
+    result: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Return a copy of *source_agent_config* carrying the study's winning parameters.
+
+    ``result["best_params"]`` is keyed by logical search-space names, so it is mapped back
+    onto the declared dotted paths first.  A tuned parameter this job cannot place is
+    logged rather than written: inventing a key would hand back an agent that looks
+    optimized without being so, and the study's own artifacts still record every value.
     """
-    if output is None:
-        return None
+    optimized = copy.deepcopy(source_agent_config)
+    best_params = result.get("best_params")
+    optimizer = optimize_config.get("optimizer")
+    if not isinstance(best_params, dict) or not isinstance(optimizer, Mapping):
+        return optimized
 
-    # Soft dependency, mirroring nemo_optimization.agents' lazy imports.
-    from nemo_agents_plugin.jobs.fileset_io import split_fileset_ref, upload_to_fileset
+    harness = optimized.get("harnesses", {}).get(optimized.get("default_harness"))
+    model = harness.get("model") if isinstance(harness, dict) else None
 
-    try:
-        artifacts = ctx.storage.persistent / "results"
-    except RuntimeError as exc:
-        raise LocalRunError(
-            "Publishing optimize results requires persistent storage, which this job did not "
-            "request.  This is a platform-run-only feature; drop 'output' for local runs."
-        ) from exc
+    unapplied: list[str] = []
+    for path, value in suggestions_by_path(parse_search_space(optimizer), best_params).items():
+        leaf = path[len(_FABRIC_DEFAULT_MODEL_PREFIX) :] if path.startswith(_FABRIC_DEFAULT_MODEL_PREFIX) else path
+        if leaf not in _TUNABLE_MODEL_FIELDS or not isinstance(model, dict):
+            unapplied.append(path)
+            continue
+        model[leaf] = value
+        logger.info("Applied tuned %s=%r to the optimized agent spec", path, value)
 
-    if not artifacts.is_dir() or not any(path.is_file() for path in artifacts.rglob("*")):
-        raise FileNotFoundError(
-            f"Optimize study reported success but wrote no artifacts to {artifacts}; nothing to publish."
+    if unapplied:
+        logger.warning(
+            "Tuned parameters %s were not applied to the optimized agent: this job only maps "
+            "%s onto the default harness's model.  Their values are in the study artifacts.",
+            sorted(unapplied),
+            sorted(_TUNABLE_MODEL_FIELDS),
         )
-
-    if classify_output_target(output) is LocalDir:
-        local = Path(output).expanduser().resolve()
-        local.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(artifacts, local, dirs_exist_ok=True)
-        logger.info("Published optimize results from %s to local dir %s", artifacts, local)
-        return {"type": "local_dir", "path": str(local)}
-
-    ws, name = split_fileset_ref(FilesetRef(output), workspace)
-    if sdk is None:
-        raise LocalRunError(
-            f"Publishing optimize results to fileset '{ws}/{name}' requires a 'sdk: NeMoPlatform', "
-            "but no platform SDK was available.  Set NMP_BASE_URL, pass sdk via "
-            "NemoJobScheduler.run_local(sdk=...), or use a local output directory instead."
-        )
-    upload_to_fileset(artifacts, fileset=name, workspace=ws, sdk=sdk)
-    logger.info("Published optimize results from %s to fileset %s/%s", artifacts, ws, name)
-    return {"type": "fileset", "fileset": f"{ws}/{name}"}
+    return optimized
 
 
 def _expand_env(value: Any) -> Any:

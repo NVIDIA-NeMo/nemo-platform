@@ -87,6 +87,7 @@ nemo agents optimize prepare-fileset \
   --fileset agentic-use-aut-optimize \
   --agent <your-agent>
 nemo agents optimize \
+  --strategy nat \
   --optimize-config-fileset default/agentic-use-aut-optimize \
   --optimize-config aut-optimize.yml \
   --agent <your-agent>

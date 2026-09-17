@@ -7,6 +7,7 @@ description = "NeMo optimization library — Optuna numeric HPO and Agents optim
 readme = "README.md"
 requires-python = ">=3.11,<3.15"
 dependencies = [
+    "nemo-agent-optimization-plugin",
     "nemo-platform-plugin",
     "nemo-platform",
     "nemo-evaluator-sdk",
@@ -19,6 +20,10 @@ dependencies = [
     "typer>=0.12.5",
 ]
 version = "0.0.0"
+
+[project.entry-points."nemo.jobs"]
+# Discovered by `nemo agents optimize` as the `nat` strategy (OptimizeJob.strategy).
+"optimization.optimize" = "nemo_optimization.jobs.optimize:OptimizeJob"
 
 [project.entry-points."nemo.optimization.backends"]
 optuna = "nemo_optimization.backends.optuna.backend:OptunaBackend"

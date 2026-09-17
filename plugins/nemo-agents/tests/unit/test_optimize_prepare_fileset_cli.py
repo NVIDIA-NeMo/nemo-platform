@@ -14,9 +14,9 @@ from unittest.mock import patch
 import pytest
 import typer
 import yaml
+from nemo_agent_optimization_plugin.jobs.optimize import OptimizeJob
 from nemo_agents_plugin.cli import AgentsCLI
 from nemo_agents_plugin.jobs.optimize_cli import register_prepare_fileset_command
-from nemo_optimization.jobs.optimize import OptimizeJob
 from typer.testing import CliRunner
 
 CONFIG: dict[str, Any] = {
@@ -106,8 +106,10 @@ def test_uploads_the_bundle_and_prints_the_submit_command(app: typer.Typer, bund
     assert record["validated"] is True
     assert record["local_path"] == bundle
     assert record["remote_path"] == ""
+    assert "--agent <agent-name>" in result.output
     assert "--optimize-config-fileset default/my-opt-fs" in result.output
     assert "--optimize-config optimize.yml" in result.output
+    assert "--output-agent <new-agent-name>" in result.output
 
 
 def test_honours_a_workspace_qualified_fileset_ref(app: typer.Typer, bundle: Path) -> None:

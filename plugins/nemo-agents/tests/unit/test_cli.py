@@ -222,7 +222,7 @@ def test_optimize_targets_agents_route() -> None:
     from nemo_platform_plugin.commands import add_job_commands
     from nemo_platform_plugin.scheduler import submit_path_for
 
-    OptimizeJob = import_module("nemo_optimization.jobs.optimize").OptimizeJob
+    OptimizeJob = import_module("nemo_agent_optimization_plugin.jobs.optimize").OptimizeJob
     assert submit_path_for(OptimizeJob, workspace="default") == "/apis/agents/v2/workspaces/default/jobs/optimize"
 
     def _submit_remote(_self, job_cls, spec, **kwargs):
@@ -240,6 +240,8 @@ def test_optimize_targets_agents_route() -> None:
             app,
             [
                 "optimize",
+                "--strategy",
+                "nat",
                 "--optimize-config",
                 "/tmp/optimize.yml",
                 "--agent",
@@ -264,7 +266,7 @@ def test_optimize_targets_agents_route() -> None:
 def test_optimize_prepare_fileset_stays_under_optimize_command() -> None:
     from nemo_platform_plugin.commands import add_job_commands
 
-    OptimizeJob = import_module("nemo_optimization.jobs.optimize").OptimizeJob
+    OptimizeJob = import_module("nemo_agent_optimization_plugin.jobs.optimize").OptimizeJob
 
     agents_cli = AgentsCLI()
     app = agents_cli.get_cli()
@@ -292,7 +294,7 @@ def test_agent_jobs_do_not_register_legacy_run_submit_verbs() -> None:
     from nemo_platform_plugin.job import NemoJob
     from typer.main import get_command
 
-    OptimizeJob = import_module("nemo_optimization.jobs.optimize").OptimizeJob
+    OptimizeJob = import_module("nemo_agent_optimization_plugin.jobs.optimize").OptimizeJob
     jobs: dict[str, type[NemoJob]] = {
         "agents.analyze": AnalyzeBatchJob,
         "agents.evaluate": EvaluateAgentJob,

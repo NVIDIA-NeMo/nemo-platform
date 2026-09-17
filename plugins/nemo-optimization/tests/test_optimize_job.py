@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import contextlib
+import copy
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -12,7 +13,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
-from nemo_optimization.jobs.optimize import OptimizeJob
+from nemo_agent_optimization_plugin.schemas.optimize import AgentOptimizeSpec
+from nemo_optimization.jobs.optimize import OptimizeJob, _apply_tuned_params
 from nemo_optimization.schemas.optimize import FILESET_REQUIRED, OptimizeSpec, OptimizeSubmitSpec
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.job_context import JobContext
@@ -30,22 +32,194 @@ from nemo_platform_plugin.run_dependencies import LocalRunError
 from nemo_platform_plugin.scheduler import NemoJobScheduler
 from pydantic import ValidationError
 
-FABRIC_AGENT = {
-    "schema_version": "fabric.agent/v1alpha1",
-    "metadata": {"name": "hermes-optimize-demo"},
-}
 MINIMAL_CONFIG = {"optimizer": {"numeric": {"enabled": True}}}
 
 SUBPROCESS_PROFILE = SubprocessJobExecutionProfile(profile="default")
 CPU_PROFILE = DockerJobExecutionProfile(provider="cpu", profile="default", config=DockerJobExecutionProfileConfig())
 
+#: A minimal but valid ``nemo-agents-spec-v1`` agent config — everything ``_to_fabric_agent_package``
+#: (study input) and ``register_optimized_agent`` (study output) validate via ``AgentConfig``.
+SOURCE_AGENT_CONFIG: dict[str, Any] = {
+    "config_format": "nemo-agents-spec-v1",
+    "name": "source-agent",
+    "default_harness": "hermes",
+    "harnesses": {
+        "hermes": {
+            "kind": "hermes",
+            "model": {
+                "provider": "openai",
+                "model": "demo-model",
+                "base_url": "http://localhost:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1",
+                "api_key_env": "NEMO_AGENTS_IGW_API_KEY",
+            },
+            "settings": {"max_tokens": 256, "reasoning_config": {"effort": "none"}},
+        }
+    },
+    "instructions": {"system": {"content": "Be brief."}},
+    "environment": {"provider": "local", "workspace": "./workspace", "artifacts": "./artifacts"},
+}
 
-def write_config(directory: Path, config: dict[str, Any], name: str = "optimize.yml") -> str:
-    """Write *config* into *directory* and return its absolute path."""
-    path = directory / name
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(yaml.safe_dump(config))
-    return str(path)
+
+def run_payload(**overrides: Any) -> dict[str, Any]:
+    """A valid ``run()`` config dict: agent + fileset bundle + workspace + output_agent.
+
+    Every field here is now required by ``AgentOptimizeSpec`` — a study always resolves a
+    platform agent and always registers a new one — so every ``run()`` test starts from this
+    and overrides only what it's testing.
+    """
+    payload = {
+        "optimize_config": "optimize.yml",
+        "optimize_config_fileset": "opt-bundle",
+        "workspace": "default",
+        "agent": "react-agent",
+        "output_agent": "react-agent-tuned",
+    }
+    payload.update(overrides)
+    return payload
+
+
+class _StubAgents:
+    """Stubs ``sdk.agents``.
+
+    ``get`` hands back *source_config* (recording the call args in *fetched* when given);
+    ``create`` accepts the optimized-agent registration every successful study now performs,
+    recording the payload in *created* when given.
+    """
+
+    def __init__(
+        self,
+        source_config: dict[str, Any],
+        *,
+        fetched: dict[str, Any] | None = None,
+        created: dict[str, Any] | None = None,
+    ) -> None:
+        self._source_config = source_config
+        self._fetched = fetched
+        self._created = created
+
+    def get(self, name: str, *, workspace: str) -> dict[str, Any]:
+        if self._fetched is not None:
+            self._fetched.update(name=name, workspace=workspace)
+        return {"config": self._source_config}
+
+    def create(self, *, name: str, config: dict[str, Any], description: str, config_format: str, workspace: str) -> Any:
+        if self._created is not None:
+            self._created.update(
+                name=name, config=config, description=description, config_format=config_format, workspace=workspace
+            )
+        return SimpleNamespace(name=name)
+
+
+class _StubFiles:
+    """Stubs ``sdk.files``.
+
+    ``download`` serves *bundles* keyed by fileset name (so a config bundle and a separately
+    staged dataset can be told apart). A call carrying ``remote_path`` is the optimized-agent
+    registration's ``ETHOS.md`` probe — stub agents never have one, so it raises, and
+    ``registration.py`` treats any such failure as a clean "nothing to copy" by design.
+    ``upload`` accepts the registration's fileset write, recording it in *uploaded* when given.
+    """
+
+    def __init__(
+        self,
+        bundles: dict[str, dict[str, str]],
+        *,
+        downloaded: dict[str, Any] | None = None,
+        uploaded: dict[str, Any] | None = None,
+    ) -> None:
+        self._bundles = bundles
+        self._downloaded = downloaded
+        self._uploaded = uploaded
+
+    def download(self, *, local_path: str, fileset: str, workspace: str, remote_path: str | None = None) -> None:
+        if remote_path is not None:
+            raise FileNotFoundError(f"{remote_path!r} not staged in fileset {workspace}/{fileset}")
+        if self._downloaded is not None:
+            self._downloaded.update(fileset=fileset, workspace=workspace)
+        for relative, contents in self._bundles.get(fileset, {}).items():
+            target = Path(local_path) / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(contents)
+
+    def upload(self, *, local_path: str, fileset: str, workspace: str, fileset_auto_create: bool) -> Any:
+        if self._uploaded is not None:
+            self._uploaded.update(
+                local_path=local_path, fileset=fileset, workspace=workspace, auto_create=fileset_auto_create
+            )
+        return SimpleNamespace(name=fileset)
+
+
+class _StubFilesetManager:
+    """Stubs ``FilesetFileManager`` for the staged-bundle download path.
+
+    Bundle staging goes through a typed files client rather than the SDK's own
+    ``files`` resource, so it is served from the same ``_StubFiles`` the rest of
+    the run uses and keeps recording into the caller's ``downloaded`` dict.
+    """
+
+    def __init__(self, files: _StubFiles, *, workspace: str, fileset: str) -> None:
+        self._files = files
+        self._workspace = workspace
+        self._fileset = fileset
+
+    def validate_storage(self) -> None:
+        pass
+
+    def download_from_url(self, _url: str, local_dir: str | Path) -> None:
+        self._files.download(local_path=str(local_dir), fileset=self._fileset, workspace=self._workspace)
+
+    def upload(self, *, local_path: Path, remote_path: str, ignore_patterns: Any = None) -> str:
+        del ignore_patterns, remote_path
+        self._files.upload(
+            local_path=str(local_path), fileset=self._fileset, workspace=self._workspace, fileset_auto_create=True
+        )
+        return f"{self._workspace}/{self._fileset}"
+
+
+@pytest.fixture(autouse=True)
+def stage_through_typed_fileset_client() -> Iterator[None]:
+    """Route ``fileset_io``'s typed-client staging at the stub SDK.
+
+    ``resolve_staged_config`` adapts the SDK with ``client_from_platform`` and downloads
+    through a ``FilesetFileManager``; neither accepts a stub SDK, so both ends are replaced.
+    """
+
+    def _client(sdk: Any, _resource: object) -> Any:
+        return sdk.files
+
+    def _manager(files_client: Any, *, workspace: str, fileset: str, ensure_fileset_exists: bool) -> Any:
+        del ensure_fileset_exists
+        return _StubFilesetManager(files_client, workspace=workspace, fileset=fileset)
+
+    with (
+        patch("nemo_agents_plugin.jobs.fileset_io.client_from_platform", side_effect=_client),
+        patch("nemo_agents_plugin.jobs.fileset_io._fileset_manager", side_effect=_manager),
+    ):
+        yield
+
+
+def bundle_sdk(
+    bundle: dict[str, str],
+    *,
+    fileset: str = "opt-bundle",
+    extra_bundles: dict[str, dict[str, str]] | None = None,
+    source_agent: dict[str, Any] = SOURCE_AGENT_CONFIG,
+    downloaded: dict[str, Any] | None = None,
+    uploaded: dict[str, Any] | None = None,
+    fetched: dict[str, Any] | None = None,
+    created: dict[str, Any] | None = None,
+) -> NeMoPlatform:
+    """An SDK stub for a full ``run()`` pass: stages *bundle* under *fileset* (plus any
+    ``extra_bundles`` under their own fileset names — e.g. a dataset staged from a second
+    fileset), resolves ``agents.get`` to *source_agent*, and accepts the ``agents.create`` /
+    ``files.upload`` registration call every successful run now makes.
+    """
+
+    class _StubSDK:
+        agents = _StubAgents(source_agent, fetched=fetched, created=created)
+        files = _StubFiles({fileset: bundle, **(extra_bundles or {})}, downloaded=downloaded, uploaded=uploaded)
+
+    return cast(NeMoPlatform, _StubSDK())
 
 
 @contextlib.contextmanager
@@ -62,9 +236,14 @@ def profiles(*execution_profiles: Any) -> Iterator[None]:
 
 
 async def compile_spec(spec: OptimizeSpec, *, workspace: str = "default", profile: str | None = None) -> Any:
+    # ``compile`` now declares ``spec: AgentOptimizeSpec`` (the router's normalized contract).
+    # These tests build the older, still-supported ``OptimizeSpec`` shape directly — it carries
+    # exactly the fields ``compile`` reads (``optimize_config``, ``optimize_config_fileset``) —
+    # so the cast documents the intentional, duck-typed cross-schema call rather than papering
+    # over a real mismatch.
     return await OptimizeJob.compile(
         workspace=workspace,
-        spec=spec,
+        spec=cast(AgentOptimizeSpec, spec),
         entity_client=MagicMock(),
         job_name=None,
         async_sdk=MagicMock(),
@@ -218,26 +397,44 @@ async def test_compile_is_retryable_when_jobs_is_unreachable() -> None:
 
 
 # ---------------------------------------------------------------------------
-# run — local (absolute path) mode
+# run — every study resolves a platform agent and stages its config from a fileset
 # ---------------------------------------------------------------------------
+#
+# ``AgentOptimizeSpec`` now requires ``agent``, ``optimize_config_fileset``, and
+# ``output_agent`` on every submission, so a bare local path with no SDK — the old
+# "inline Fabric config" mode this job used to support — can no longer be constructed at
+# all. Every test below goes through ``bundle_sdk`` + ``run_payload`` accordingly.
 
 
-def test_run_dispatches_a_local_fabric_config(tmp_path: Path, ctx: JobContext) -> None:
-    optimize_config = write_config(tmp_path, {**FABRIC_AGENT, **MINIMAL_CONFIG})
+def test_run_dispatches_a_local_fabric_config(ctx: JobContext) -> None:
+    """``run`` loads the staged config and hands it to ``OptimizeRouter.dispatch``.
+
+    Inline Fabric agent packages are gone: every study now resolves ``agent`` through the
+    SDK first, so this also confirms that resolution feeds a real ``agent_config`` (the old
+    assertion here was ``agent_config is None``, which is no longer reachable).
+    """
+    sdk = bundle_sdk({"optimize.yml": yaml.safe_dump(MINIMAL_CONFIG)})
 
     with patch(
         "nemo_optimization.jobs.optimize.OptimizeRouter.dispatch", return_value={"status": "completed"}
     ) as dispatch:
-        result = OptimizeJob().run({"optimize_config": optimize_config, "workspace": "default"}, ctx=ctx)
+        result = OptimizeJob().run(run_payload(), ctx=ctx, sdk=sdk)
 
     assert result["status"] == "completed"
     kwargs = dispatch.call_args.kwargs
-    assert kwargs["agent_config"] is None
+    assert kwargs["agent_config"]["schema_version"] == "fabric.agent/v1alpha1"
     assert kwargs["optimize_config"]["optimizer"]["numeric"]["enabled"] is True
 
 
-def test_scheduler_run_local_preserves_workspace_for_absolute_config_without_fileset(tmp_path: Path) -> None:
-    optimize_config = write_config(tmp_path, {**FABRIC_AGENT, **MINIMAL_CONFIG})
+def test_scheduler_run_local_preserves_workspace_through_a_staged_config(ctx: JobContext) -> None:
+    """``workspace`` still flows from the submitted spec into ``preflight_validate_llm_models``
+    — but no longer via ``NemoJobScheduler.run_local``'s ``workspace=`` kwarg.  ``OptimizeJob``
+    no longer declares an ``input_spec_schema``, so ``to_spec`` (which used to stamp
+    ``workspace`` onto the spec on the local path) never runs; the submitted config dict has to
+    set ``workspace`` itself now. (The old test name/premise, "for absolute config without
+    fileset", is doubly gone: a fileset is mandatory too.)
+    """
+    sdk = bundle_sdk({"optimize.yml": yaml.safe_dump(MINIMAL_CONFIG)})
     observed: dict[str, str] = {}
 
     def _preflight(*args: Any, workspace: str, **kwargs: Any) -> None:
@@ -250,16 +447,24 @@ def test_scheduler_run_local_preserves_workspace_for_absolute_config_without_fil
     ):
         result = NemoJobScheduler().run_local(
             OptimizeJob,
-            {"optimize_config": optimize_config},
+            run_payload(workspace="research"),
             workspace="research",
+            sdk=sdk,
+            ctx=ctx,
         )
 
     assert result["status"] == "completed"
     assert observed["workspace"] == "research"
 
 
-def test_run_leaves_the_working_directory_alone_in_local_mode(tmp_path: Path, ctx: JobContext) -> None:
-    optimize_config = write_config(tmp_path, MINIMAL_CONFIG)
+def test_run_restores_the_working_directory_after_a_successful_study(ctx: JobContext) -> None:
+    """A fileset is mandatory now, so ``run`` always stages the config into a download dir and
+    always chdirs there for the dispatch — the old "never touches cwd" local-path guarantee
+    this test's name described is gone. What survives, and what this checks instead: cwd
+    always comes back afterward. (The failure-path counterpart is
+    ``test_run_restores_the_working_directory_when_the_study_raises``.)
+    """
+    sdk = bundle_sdk({"optimize.yml": yaml.safe_dump(MINIMAL_CONFIG)})
     cwd = Path.cwd()
     observed: dict[str, Path] = {}
 
@@ -268,26 +473,25 @@ def test_run_leaves_the_working_directory_alone_in_local_mode(tmp_path: Path, ct
         return {"status": "completed"}
 
     with patch("nemo_optimization.jobs.optimize.OptimizeRouter.dispatch", side_effect=_dispatch):
-        OptimizeJob().run({"optimize_config": optimize_config, "workspace": "default"}, ctx=ctx)
+        OptimizeJob().run(run_payload(), ctx=ctx, sdk=sdk)
 
-    assert observed["cwd"] == cwd
+    assert observed["cwd"] != cwd
+    assert Path.cwd() == cwd
 
 
-def test_run_expands_env_vars_in_the_config(tmp_path: Path, ctx: JobContext, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_expands_env_vars_in_the_config(ctx: JobContext, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OPTIMIZE_TEST_MODEL", "demo-model")
-    optimize_config = write_config(tmp_path, {"models": {"default": {"model": "${OPTIMIZE_TEST_MODEL}"}}})
+    sdk = bundle_sdk({"optimize.yml": yaml.safe_dump({"models": {"default": {"model": "${OPTIMIZE_TEST_MODEL}"}}})})
 
     with patch(
         "nemo_optimization.jobs.optimize.OptimizeRouter.dispatch", return_value={"status": "completed"}
     ) as dispatch:
-        OptimizeJob().run({"optimize_config": optimize_config, "workspace": "default"}, ctx=ctx)
+        OptimizeJob().run(run_payload(), ctx=ctx, sdk=sdk)
 
     assert dispatch.call_args.kwargs["optimize_config"]["models"]["default"]["model"] == "demo-model"
 
 
-def test_run_resolves_platform_agent_before_dispatch(tmp_path: Path, ctx: JobContext) -> None:
-    optimize_config = write_config(tmp_path, MINIMAL_CONFIG)
-
+def test_run_resolves_platform_agent_before_dispatch(ctx: JobContext) -> None:
     platform_agent = {
         "config_format": "nemo-agents-spec-v1",
         "name": "react-agent",
@@ -315,25 +519,15 @@ def test_run_resolves_platform_agent_before_dispatch(tmp_path: Path, ctx: JobCon
             }
         },
     }
-
-    class _StubAgents:
-        def get(self, *, name: str, workspace: str) -> dict[str, Any]:
-            assert name == "react-agent"
-            assert workspace == "default"
-            return {"config": platform_agent}
-
-    class _StubSDK:
-        agents = _StubAgents()
+    fetched: dict[str, Any] = {}
+    sdk = bundle_sdk({"optimize.yml": yaml.safe_dump(MINIMAL_CONFIG)}, source_agent=platform_agent, fetched=fetched)
 
     with patch(
         "nemo_optimization.jobs.optimize.OptimizeRouter.dispatch", return_value={"status": "completed"}
     ) as dispatch:
-        OptimizeJob().run(
-            {"optimize_config": optimize_config, "workspace": "default", "agent": "react-agent"},
-            ctx=ctx,
-            sdk=cast(NeMoPlatform, _StubSDK()),
-        )
+        OptimizeJob().run(run_payload(agent="react-agent"), ctx=ctx, sdk=sdk)
 
+    assert fetched == {"name": "react-agent", "workspace": "default"}
     agent_config = dispatch.call_args.kwargs["agent_config"]
     assert agent_config["schema_version"] == "fabric.agent/v1alpha1"
     assert agent_config["harness"]["adapter_id"] == "nvidia.fabric.hermes"
@@ -341,102 +535,20 @@ def test_run_resolves_platform_agent_before_dispatch(tmp_path: Path, ctx: JobCon
     assert agent_config["models"]["judge"]["model"] == "demo-model"
 
 
-def test_run_rejects_endpoint_agent(tmp_path: Path, ctx: JobContext) -> None:
-    optimize_config = write_config(tmp_path, MINIMAL_CONFIG)
-
-    with pytest.raises(LocalRunError, match="Endpoint URL / URI optimize mode has been removed"):
-        OptimizeJob().run(
-            {"optimize_config": optimize_config, "workspace": "default", "agent": "http://localhost:8080"},
-            ctx=ctx,
-        )
-
-
 # ---------------------------------------------------------------------------
 # run — staged (fileset) mode
 # ---------------------------------------------------------------------------
 
 
-@contextlib.contextmanager
-def bundle_sdk(
-    bundle: dict[str, str] | None = None,
-    *,
-    downloaded: dict[str, Any] | None = None,
-    uploaded: dict[str, Any] | None = None,
-) -> Iterator[NeMoPlatform]:
-    """Patch fileset staging helpers so typed-manager calls materialize *bundle*."""
-
-    bundle = bundle or {}
-    sdk = MagicMock(spec=NeMoPlatform)
-    files_client = MagicMock()
-
-    def _manager(
-        _files_client: object,
-        *,
-        workspace: str,
-        fileset: str,
-        ensure_fileset_exists: bool,
-    ) -> object:
-        del _files_client
-
-        class _StubManager:
-            def validate_storage(self) -> None:
-                pass
-
-            def download_from_url(self, _url: str, local_dir: str | Path | None = None) -> Any:
-                assert local_dir is not None
-                if downloaded is not None:
-                    downloaded.update(fileset=fileset, workspace=workspace)
-                root = Path(local_dir)
-                root.mkdir(parents=True, exist_ok=True)
-                for relative, contents in bundle.items():
-                    target = root / relative
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    target.write_text(contents)
-                return SimpleNamespace(path=root, tmp_dir=root)
-
-            def upload(
-                self,
-                *,
-                local_path: Path,
-                remote_path: str,
-                ignore_patterns: list[str] | str | None = None,
-            ) -> str:
-                del ignore_patterns
-                if uploaded is not None:
-                    uploaded.update(
-                        local_path=local_path,
-                        remote_path=remote_path,
-                        fileset=fileset,
-                        workspace=workspace,
-                        auto_create=ensure_fileset_exists,
-                        names=sorted(p.name for p in local_path.rglob("*") if p.is_file()),
-                    )
-                return f"{workspace}/{fileset}"
-
-        return _StubManager()
-
-    with (
-        patch("nemo_agents_plugin.jobs.fileset_io.client_from_platform", return_value=files_client),
-        patch("nemo_agents_plugin.jobs.fileset_io._fileset_manager", side_effect=_manager),
-    ):
-        yield cast(NeMoPlatform, sdk)
-
-
 def test_run_stages_the_config_from_the_fileset(ctx: JobContext) -> None:
     downloaded: dict[str, Any] = {}
+    sdk = bundle_sdk({"configs/optimize.yml": yaml.safe_dump(MINIMAL_CONFIG)}, downloaded=downloaded)
 
-    with (
-        bundle_sdk({"configs/optimize.yml": yaml.safe_dump(MINIMAL_CONFIG)}, downloaded=downloaded) as sdk,
-        patch(
-            "nemo_optimization.jobs.optimize.OptimizeRouter.dispatch", return_value={"status": "completed"}
-        ) as dispatch,
-    ):
+    with patch(
+        "nemo_optimization.jobs.optimize.OptimizeRouter.dispatch", return_value={"status": "completed"}
+    ) as dispatch:
         result = OptimizeJob().run(
-            {
-                "optimize_config": "configs/optimize.yml",
-                "optimize_config_fileset": "default/opt-bundle",
-                "workspace": "default",
-            },
+            run_payload(optimize_config="configs/optimize.yml", optimize_config_fileset="default/opt-bundle"),
             ctx=ctx,
             sdk=sdk,
         )
@@ -455,6 +567,12 @@ def test_run_resolves_relative_assets_against_the_staged_bundle(ctx: JobContext)
             "fabric": {"base_dir": "."},
         },
     }
+    sdk = bundle_sdk(
+        {
+            "optimize.yml": yaml.safe_dump(config),
+            "data/rows.json": json.dumps([{"question": "q", "answer": "a"}]),
+        }
+    )
     observed: dict[str, Any] = {}
 
     def _dispatch(**kwargs: Any) -> dict[str, Any]:
@@ -464,24 +582,8 @@ def test_run_resolves_relative_assets_against_the_staged_bundle(ctx: JobContext)
         return {"status": "completed"}
 
     cwd = Path.cwd()
-    with (
-        bundle_sdk(
-            {
-                "optimize.yml": yaml.safe_dump(config),
-                "data/rows.json": json.dumps([{"question": "q", "answer": "a"}]),
-            }
-        ) as sdk,
-        patch("nemo_optimization.jobs.optimize.OptimizeRouter.dispatch", side_effect=_dispatch),
-    ):
-        OptimizeJob().run(
-            {
-                "optimize_config": "optimize.yml",
-                "optimize_config_fileset": "opt-bundle",
-                "workspace": "default",
-            },
-            ctx=ctx,
-            sdk=sdk,
-        )
+    with patch("nemo_optimization.jobs.optimize.OptimizeRouter.dispatch", side_effect=_dispatch):
+        OptimizeJob().run(run_payload(), ctx=ctx, sdk=sdk)
 
     assert observed["rows"] == [{"question": "q", "answer": "a"}]
     assert observed["cwd"] != cwd
@@ -490,52 +592,31 @@ def test_run_resolves_relative_assets_against_the_staged_bundle(ctx: JobContext)
 
 
 def test_run_restores_the_working_directory_when_the_study_raises(ctx: JobContext) -> None:
+    sdk = bundle_sdk({"optimize.yml": yaml.safe_dump(MINIMAL_CONFIG)})
     cwd = Path.cwd()
 
     with (
-        bundle_sdk({"optimize.yml": yaml.safe_dump(MINIMAL_CONFIG)}) as sdk,
         patch("nemo_optimization.jobs.optimize.OptimizeRouter.dispatch", side_effect=RuntimeError("study blew up")),
         pytest.raises(RuntimeError, match="study blew up"),
     ):
-        OptimizeJob().run(
-            {
-                "optimize_config": "optimize.yml",
-                "optimize_config_fileset": "opt-bundle",
-                "workspace": "default",
-            },
-            ctx=ctx,
-            sdk=sdk,
-        )
+        OptimizeJob().run(run_payload(), ctx=ctx, sdk=sdk)
 
     assert Path.cwd() == cwd
 
 
 def test_run_rejects_a_staged_config_missing_from_the_fileset(ctx: JobContext) -> None:
-    with (
-        bundle_sdk({"other.yml": yaml.safe_dump(MINIMAL_CONFIG)}) as sdk,
-        pytest.raises(FileNotFoundError, match="was not found in fileset"),
-    ):
-        OptimizeJob().run(
-            {
-                "optimize_config": "optimize.yml",
-                "optimize_config_fileset": "opt-bundle",
-                "workspace": "default",
-            },
-            ctx=ctx,
-            sdk=sdk,
-        )
+    sdk = bundle_sdk({"other.yml": yaml.safe_dump(MINIMAL_CONFIG)})
+
+    with pytest.raises(FileNotFoundError, match="was not found in fileset"):
+        OptimizeJob().run(run_payload(), ctx=ctx, sdk=sdk)
 
 
 def test_run_rejects_a_staged_config_without_an_sdk(ctx: JobContext) -> None:
-    with pytest.raises(LocalRunError, match="requires a 'sdk: NeMoPlatform'"):
-        OptimizeJob().run(
-            {
-                "optimize_config": "optimize.yml",
-                "optimize_config_fileset": "opt-bundle",
-                "workspace": "default",
-            },
-            ctx=ctx,
-        )
+    """``run()`` no longer checks ``sdk`` up front; a fileset-backed config still needs one to
+    stage the bundle, so the fileset-staging helper's own "no sdk" message is what surfaces.
+    """
+    with pytest.raises(LocalRunError, match="Staging optimize-config from a fileset requires a 'sdk"):
+        OptimizeJob().run(run_payload(), ctx=ctx)
 
 
 # ---------------------------------------------------------------------------
@@ -550,22 +631,21 @@ def _config_with_dataset(dataset: Any) -> dict[str, Any]:
     }
 
 
-def test_run_stages_dataset_from_fileset_ref(tmp_path: Path, ctx: JobContext) -> None:
+def test_run_stages_dataset_from_fileset_ref(ctx: JobContext) -> None:
     downloaded: dict[str, Any] = {}
-    optimize_config = write_config(tmp_path, _config_with_dataset({"file_path": "default/evals#rows.json"}))
+    config = _config_with_dataset({"file_path": "default/evals#rows.json"})
+    sdk = bundle_sdk(
+        {"optimize.yml": yaml.safe_dump(config)},
+        extra_bundles={"evals": {"rows.json": '[{"question": "q", "answer": "a"}]'}},
+        downloaded=downloaded,
+    )
 
-    with (
-        bundle_sdk({"rows.json": '[{"question": "q", "answer": "a"}]'}, downloaded=downloaded) as sdk,
-        patch(
-            "nemo_optimization.jobs.optimize.OptimizeRouter.dispatch", return_value={"status": "completed"}
-        ) as dispatch,
-    ):
-        OptimizeJob().run(
-            {"optimize_config": optimize_config, "workspace": "default"},
-            ctx=ctx,
-            sdk=sdk,
-        )
+    with patch(
+        "nemo_optimization.jobs.optimize.OptimizeRouter.dispatch", return_value={"status": "completed"}
+    ) as dispatch:
+        OptimizeJob().run(run_payload(), ctx=ctx, sdk=sdk)
 
+    # Two filesets are downloaded (the config bundle, then the dataset); the dataset's is last.
     assert downloaded == {"fileset": "evals", "workspace": "default"}
     staged = dispatch.call_args.kwargs["optimize_config"]["eval"]["general"]["dataset"]["file_path"]
     assert staged.endswith("rows.json")
@@ -574,170 +654,80 @@ def test_run_stages_dataset_from_fileset_ref(tmp_path: Path, ctx: JobContext) ->
     assert dispatch.call_args.kwargs["optimize_config"]["eval"]["general"]["max_concurrency"] == 1
 
 
-def test_run_leaves_plain_dataset_path_untouched(tmp_path: Path, ctx: JobContext) -> None:
-    optimize_config = write_config(tmp_path, _config_with_dataset({"file_path": "/data/rows.json"}))
+def test_run_leaves_plain_dataset_path_untouched(ctx: JobContext) -> None:
+    config = _config_with_dataset({"file_path": "/data/rows.json"})
+    sdk = bundle_sdk({"optimize.yml": yaml.safe_dump(config)})
 
     with patch(
         "nemo_optimization.jobs.optimize.OptimizeRouter.dispatch", return_value={"status": "completed"}
     ) as dispatch:
-        OptimizeJob().run({"optimize_config": optimize_config, "workspace": "default"}, ctx=ctx)
+        OptimizeJob().run(run_payload(), ctx=ctx, sdk=sdk)
 
     dataset = dispatch.call_args.kwargs["optimize_config"]["eval"]["general"]["dataset"]
     assert dataset == {"file_path": "/data/rows.json"}
 
 
 # ---------------------------------------------------------------------------
-# run — publishing study artifacts
+# _apply_tuned_params
 # ---------------------------------------------------------------------------
 
 
-def _write_study_artifacts(ctx: JobContext) -> Path:
-    """Stand in for what a backend leaves behind under <persistent>/results."""
-    artifacts = ctx.storage.persistent / "results" / "optimizer_results"
-    artifacts.mkdir(parents=True)
-    (artifacts / "study_summary.json").write_text('{"status": "completed"}')
-    (artifacts / "optimized_config.yml").write_text("optimizer: {}\n")
-    return artifacts
+def _tunable_source_agent(*, harness: str = "hermes", model: dict[str, Any] | None = None) -> dict[str, Any]:
+    return {
+        "config_format": "nemo-agents-spec-v1",
+        "name": "source-agent",
+        "default_harness": harness,
+        "harnesses": {
+            harness: {
+                "kind": harness,
+                "model": model
+                if model is not None
+                else {"provider": "openai", "model": "demo-model", "temperature": 0.2},
+            }
+        },
+    }
 
 
-def test_run_publishes_results_to_fileset(tmp_path: Path, ctx: JobContext) -> None:
-    uploaded: dict[str, Any] = {}
-    optimize_config = write_config(tmp_path, MINIMAL_CONFIG)
-
-    def _dispatch(**kwargs: Any) -> dict[str, Any]:
-        _write_study_artifacts(ctx)
-        return {"status": "completed", "best_trial": 3}
-
-    with (
-        bundle_sdk(uploaded=uploaded) as sdk,
-        patch("nemo_optimization.jobs.optimize.OptimizeRouter.dispatch", side_effect=_dispatch),
-    ):
-        result = OptimizeJob().run(
-            {"optimize_config": optimize_config, "workspace": "default", "output": "tuned-results"},
-            ctx=ctx,
-            sdk=sdk,
-        )
-
-    assert uploaded["fileset"] == "tuned-results"
-    assert uploaded["workspace"] == "default"
-    assert uploaded["auto_create"] is True
-    assert uploaded["local_path"] == ctx.storage.persistent / "results"
-    assert uploaded["remote_path"] == ""
-    assert uploaded["names"] == ["optimized_config.yml", "study_summary.json"]
-    # The study's own summary survives alongside the new pointer.
-    assert result["best_trial"] == 3
-    assert result["output"] == {"type": "fileset", "fileset": "default/tuned-results"}
+def _search_space(**paths: str) -> dict[str, Any]:
+    """An ``optimizer`` mapping declaring one Fabric-typed dotted path per logical param name."""
+    return {
+        "search_space": {name: {"type": "fabric", "path": path, "values": [0.0, 1.0]} for name, path in paths.items()}
+    }
 
 
-def test_run_publishes_results_to_local_dir(tmp_path: Path, ctx: JobContext) -> None:
-    dest = tmp_path / "published"
-    optimize_config = write_config(tmp_path, MINIMAL_CONFIG)
+def test_apply_tuned_params_lands_temperature_on_the_default_harness_model() -> None:
+    source = _tunable_source_agent()
+    optimize_config = {"optimizer": _search_space(temp="models.default.temperature")}
+    result = {"best_params": {"temp": 0.73}}
 
-    def _dispatch(**kwargs: Any) -> dict[str, Any]:
-        _write_study_artifacts(ctx)
-        return {"status": "completed"}
+    optimized = _apply_tuned_params(source, optimize_config, result)
 
-    with patch("nemo_optimization.jobs.optimize.OptimizeRouter.dispatch", side_effect=_dispatch):
-        result = OptimizeJob().run(
-            {"optimize_config": optimize_config, "workspace": "default", "output": str(dest)},
-            ctx=ctx,
-        )
-
-    assert (dest / "optimizer_results" / "study_summary.json").is_file()
-    assert result["output"] == {"type": "local_dir", "path": str(dest.resolve())}
+    assert optimized["harnesses"]["hermes"]["model"]["temperature"] == 0.73
 
 
-def test_run_publishes_staged_results_after_leaving_the_bundle(ctx: JobContext, tmp_path: Path) -> None:
-    """Publishing happens outside the chdir, so a relative --output lands where the caller meant."""
-    dest = tmp_path / "published"
+def test_apply_tuned_params_leaves_an_unplaceable_leaf_unapplied() -> None:
+    """``top_p`` has no home in ``_TUNABLE_MODEL_FIELDS`` — it must not be invented as a key."""
+    source = _tunable_source_agent()
+    optimize_config = {"optimizer": _search_space(top_p="models.default.top_p")}
+    result = {"best_params": {"top_p": 0.9}}
 
-    def _dispatch(**kwargs: Any) -> dict[str, Any]:
-        _write_study_artifacts(ctx)
-        return {"status": "completed"}
+    optimized = _apply_tuned_params(source, optimize_config, result)
 
-    with (
-        bundle_sdk({"optimize.yml": yaml.safe_dump(MINIMAL_CONFIG)}) as sdk,
-        patch("nemo_optimization.jobs.optimize.OptimizeRouter.dispatch", side_effect=_dispatch),
-    ):
-        result = OptimizeJob().run(
-            {
-                "optimize_config": "optimize.yml",
-                "optimize_config_fileset": "opt-bundle",
-                "workspace": "default",
-                "output": str(dest),
-            },
-            ctx=ctx,
-            sdk=sdk,
-        )
-
-    assert (dest / "optimizer_results" / "study_summary.json").is_file()
-    assert result["output"] == {"type": "local_dir", "path": str(dest.resolve())}
+    assert "top_p" not in optimized["harnesses"]["hermes"]["model"]
+    assert optimized["harnesses"]["hermes"]["model"] == source["harnesses"]["hermes"]["model"]
 
 
-def test_run_without_output_publishes_nothing(tmp_path: Path, ctx: JobContext) -> None:
-    optimize_config = write_config(tmp_path, MINIMAL_CONFIG)
+def test_apply_tuned_params_does_not_mutate_its_input() -> None:
+    """The whole point is not producing an agent that looks optimized without being so —
+    starting with the caller's own dict never even in scratch space."""
+    source = _tunable_source_agent()
+    original = copy.deepcopy(source)
+    optimize_config = {"optimizer": _search_space(temp="models.default.temperature")}
+    result = {"best_params": {"temp": 0.73}}
 
-    def _dispatch(**kwargs: Any) -> dict[str, Any]:
-        _write_study_artifacts(ctx)
-        return {"status": "completed"}
+    _apply_tuned_params(source, optimize_config, result)
 
-    with patch("nemo_optimization.jobs.optimize.OptimizeRouter.dispatch", side_effect=_dispatch):
-        result = OptimizeJob().run({"optimize_config": optimize_config, "workspace": "default"}, ctx=ctx)
-
-    assert result == {"status": "completed"}
-
-
-def test_run_does_not_publish_when_study_fails(tmp_path: Path, ctx: JobContext) -> None:
-    """A crashed study must not leave partial artifacts in the target fileset."""
-    uploaded: dict[str, Any] = {}
-    optimize_config = write_config(tmp_path, MINIMAL_CONFIG)
-
-    with (
-        bundle_sdk(uploaded=uploaded) as sdk,
-        patch("nemo_optimization.jobs.optimize.OptimizeRouter.dispatch", side_effect=RuntimeError("study blew up")),
-        pytest.raises(RuntimeError, match="study blew up"),
-    ):
-        OptimizeJob().run(
-            {"optimize_config": optimize_config, "workspace": "default", "output": "tuned-results"},
-            ctx=ctx,
-            sdk=sdk,
-        )
-    assert uploaded == {}
-
-
-def test_run_rejects_fileset_output_without_sdk(tmp_path: Path, ctx: JobContext) -> None:
-    optimize_config = write_config(tmp_path, MINIMAL_CONFIG)
-
-    def _dispatch(**kwargs: Any) -> dict[str, Any]:
-        _write_study_artifacts(ctx)
-        return {"status": "completed"}
-
-    with (
-        patch("nemo_optimization.jobs.optimize.OptimizeRouter.dispatch", side_effect=_dispatch),
-        pytest.raises(LocalRunError, match="requires a 'sdk: NeMoPlatform'"),
-    ):
-        OptimizeJob().run(
-            {"optimize_config": optimize_config, "workspace": "default", "output": "tuned-results"},
-            ctx=ctx,
-        )
-
-
-def test_run_reports_missing_artifacts_on_publish(tmp_path: Path, ctx: JobContext) -> None:
-    """A backend that claims success but writes nothing is a bug, not an empty upload."""
-    optimize_config = write_config(tmp_path, MINIMAL_CONFIG)
-
-    with (
-        patch("nemo_optimization.jobs.optimize.OptimizeRouter.dispatch", return_value={"status": "completed"}),
-        pytest.raises(FileNotFoundError, match="wrote no artifacts"),
-    ):
-        OptimizeJob().run(
-            {
-                "optimize_config": optimize_config,
-                "workspace": "default",
-                "output": str(tmp_path / "published"),
-            },
-            ctx=ctx,
-        )
+    assert source == original
 
 
 def test_optimize_task_module_is_importable() -> None:

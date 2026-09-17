@@ -250,6 +250,7 @@ functional-services = [
 cpu-tasks = [
   { include-group = "nmp-base" },
   { include-group = "nmp-task-runtime" },
+  "nemo-agent-optimization-plugin",
   # agents.execute task module plus the bundled Fabric adapters (claude, codex,
   # deepagents, hermes). Without this the job's declared `container = "cpu-tasks"`
   # is not true: nemo_agents_plugin.tasks.execute is not importable here.
@@ -447,6 +448,7 @@ nemo-agents-example-email-security = { workspace = true }
 nemo-customizer-plugin = { workspace = true }
 nemo-automodel-plugin = { workspace = true }
 nemo-optimization-plugin = { workspace = true }
+nemo-agent-optimization-plugin = { workspace = true }
 nemo-unsloth-plugin = { workspace = true }
 nemo-rl-plugin = { workspace = true }
 nmp-automodel = { workspace = true }
@@ -516,6 +518,7 @@ members = [
   "plugins/nemo-customizer",
   "plugins/nemo-automodel",
   "plugins/nemo-optimization",
+  "plugins/nemo-agent-optimization",
   "plugins/nemo-unsloth",
   "plugins/nemo-rl",
   "services/automodel",

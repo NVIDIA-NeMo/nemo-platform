@@ -182,6 +182,7 @@ nemo agents optimize prepare-fileset \
   --fileset calculator-optimize \
   --agent calculator-agent
 nemo agents optimize \
+  --strategy nat \
   --optimize-config-fileset default/calculator-optimize \
   --optimize-config calculator-optimize.yml \
   --agent calculator-agent

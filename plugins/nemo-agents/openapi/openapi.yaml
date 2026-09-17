@@ -6574,97 +6574,84 @@ components:
       title: OptimizeSkillsJobsSortField
     OptimizeSpec:
       properties:
+        agent:
+          type: string
+          minLength: 1
+          title: Agent
+          description: 'Platform agent to optimize: ''name'' or ''workspace/name''.'
+        optimize_config_fileset:
+          type: string
+          minLength: 1
+          title: Optimize Config Fileset
+          description: 'Fileset holding the optimization bundle: the config named
+            by ''optimize_config'' plus every asset it references. Stage one with
+            `nemo agents optimize prepare-fileset`.'
         optimize_config:
           type: string
           minLength: 1
           title: Optimize Config
-          description: "Location of the Fabric-native optimization YAML.  With optimize_config_fileset\
-            \ set \u2014 required for remote submission \u2014 this is a path relative\
-            \ to the fileset root.  Without it (programmatic local runs only) it is\
-            \ an absolute path on the host running the job."
-        optimize_config_fileset:
-          title: Optimize Config Fileset
-          description: 'Fileset holding the optimization bundle: the config named
-            by optimize_config plus every asset it references (Agent under Test package,
-            dataset, eval.fabric.base_dir tree, hooks and MCP configs).  Stage one
-            with `nemo agents optimize prepare-fileset`. Required for remote submissions,
-            where the job has no access to the client''s filesystem.'
+          description: Path to the strategy configuration YAML, relative to the fileset
+            root.
+        output_agent:
           type: string
+          minLength: 1
+          title: Output Agent
+          description: Name for the new, optimized agent entity this run creates.
         workspace:
           type: string
           title: Workspace
-          description: Workspace used to fetch a platform agent and for VirtualModel
-            preflight.
+          description: Workspace for every entity in the run.
           default: default
-        agent:
-          title: Agent
-          description: Optional platform agent reference ('name' or 'workspace/name').
-            When omitted, the optimization config must include an inline Fabric agent
-            package.
+        strategy:
           type: string
           minLength: 1
-        output:
-          title: Output
-          description: "Where to publish the study artifacts (optimized config, trials\
-            \ dataframe, pareto plots, ATIF evidence) once the study succeeds \u2014\
-            \ either a local directory (path-shaped: starts with '/', './', '../',\
-            \ '~/') or a NeMo Platform fileset reference ('name' or 'workspace/name').\
-            \  Filesets are created on demand if missing.  This is in addition to\
-            \ the per-job artifacts that ``ctx.results.save`` always registers; it\
-            \ gives remote clients a stable, addressable location to read from."
-          type: string
+          title: Strategy
+          description: Installed optimization strategy, e.g. 'nat'.
       type: object
       required:
+      - agent
+      - optimize_config_fileset
       - optimize_config
+      - output_agent
+      - strategy
       title: OptimizeSpec
-      description: Spec for an Agents optimize study (``nemo agents optimize``).
+      description: 'Router spec: the normalized fields plus strategy selection.'
     OptimizeSubmitSpec:
       properties:
+        strategy:
+          type: string
+          minLength: 1
+          title: Strategy
+          description: Installed optimization strategy, e.g. 'nat'.
+        agent:
+          type: string
+          minLength: 1
+          title: Agent
+          description: Platform agent to optimize.
+        optimize_config_fileset:
+          type: string
+          minLength: 1
+          title: Optimize Config Fileset
+          description: Fileset holding the optimization bundle.
         optimize_config:
           type: string
           minLength: 1
           title: Optimize Config
-          description: "Location of the Fabric-native optimization YAML.  With optimize_config_fileset\
-            \ set \u2014 required for remote submission \u2014 this is a path relative\
-            \ to the fileset root.  Without it (programmatic local runs only) it is\
-            \ an absolute path on the host running the job."
-        optimize_config_fileset:
-          title: Optimize Config Fileset
-          description: 'Fileset holding the optimization bundle: the config named
-            by optimize_config plus every asset it references (Agent under Test package,
-            dataset, eval.fabric.base_dir tree, hooks and MCP configs).  Stage one
-            with `nemo agents optimize prepare-fileset`. Required for remote submissions,
-            where the job has no access to the client''s filesystem. Programmatic
-            local runs may omit it and use an absolute host path for optimize_config.'
-          type: string
-        workspace:
-          type: string
-          title: Workspace
-          description: Workspace used to fetch a platform agent and for VirtualModel
-            preflight.
-          default: default
-        agent:
-          title: Agent
-          description: Optional platform agent reference ('name' or 'workspace/name').
-            When omitted, the optimization config must include an inline Fabric agent
-            package.
+          description: Config YAML path, relative to the fileset root.
+        output_agent:
           type: string
           minLength: 1
-        output:
-          title: Output
-          description: "Where to publish the study artifacts (optimized config, trials\
-            \ dataframe, pareto plots, ATIF evidence) once the study succeeds \u2014\
-            \ either a local directory (path-shaped: starts with '/', './', '../',\
-            \ '~/') or a NeMo Platform fileset reference ('name' or 'workspace/name').\
-            \  Filesets are created on demand if missing.  This is in addition to\
-            \ the per-job artifacts that ``ctx.results.save`` always registers; it\
-            \ gives remote clients a stable, addressable location to read from."
-          type: string
+          title: Output Agent
+          description: Name for the new optimized agent entity.
       type: object
       required:
+      - strategy
+      - agent
+      - optimize_config_fileset
       - optimize_config
+      - output_agent
       title: OptimizeSubmitSpec
-      description: Submitter-facing optimize spec for remote platform submissions.
+      description: Client-submitted router fields (workspace is added server-side).
     PackageAgentInput:
       properties:
         agent:

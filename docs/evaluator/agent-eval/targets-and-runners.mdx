@@ -43,7 +43,10 @@ bare model do before you wrap it in an agent?). The evaluator prompts it with ea
 
 ```python
 from nemo_evaluator_sdk.values import Model, SecretRef
+from nemo_evaluator_sdk.values import Model, SecretRef
 
+target = Model(url="https://integrate.api.nvidia.com/v1/chat/completions", name="nvidia/nemotron-3.5-lightning-30b-a3b",
+               api_key_secret=SecretRef(root="NVIDIA_API_KEY"))
 target = Model(url="https://integrate.api.nvidia.com/v1/chat/completions", name="nvidia/nemotron-3.5-lightning-30b-a3b",
                api_key_secret=SecretRef(root="NVIDIA_API_KEY"))
 ```
@@ -105,9 +108,6 @@ class AgentTaskRunner:
     async def run_tasks(
         self, tasks: Sequence[AgentEvalTask], config: AgentEvalRunConfig | None = None
     ) -> Sequence[AgentEvalTrial]:
-        raise NotImplementedError
-
-    def runner_info(self) -> RunnerInfo:
         raise NotImplementedError
 ```
 
