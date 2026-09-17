@@ -88,6 +88,7 @@ import json
 import logging
 import os
 from collections.abc import AsyncIterator, Callable, Iterable, Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, Optional, cast
 
@@ -533,6 +534,30 @@ def _build_job_run_signature(leaves: list[SpecLeafField]) -> inspect.Signature:
 # ---------------------------------------------------------------------------
 
 
+@dataclass(frozen=True, slots=True)
+class SubmittedJob:
+    """What a job ``submit`` created, plus the connection it was created over.
+
+    Returned by the generated ``submit`` callback so that a wrapper can follow
+    the job without resolving the base URL, workspace or auth headers again.
+    """
+
+    #: The platform's job response, as printed to stdout.
+    response: dict[str, Any]
+    #: Platform base URL the job was submitted to.
+    base_url: str
+    #: Workspace the job was created in.
+    workspace: str
+    #: Auth headers used for the submit call.
+    headers: dict[str, str]
+
+    @property
+    def name(self) -> str | None:
+        """The platform-assigned job id, or ``None`` if the response omitted it."""
+        name = self.response.get("name")
+        return name if isinstance(name, str) else None
+
+
 def _add_submit_command(
     group: typer.Typer,
     job_cls: type[NemoJob],
@@ -560,7 +585,7 @@ def _add_submit_command(
     unavailable: list[str] = []
     leaves = walk_spec_leaves(schema, reserved=_JOB_SUBMIT_RESERVED_FLAGS, unavailable=unavailable)
 
-    def _submit(typer_ctx: typer.Context, **kwargs: object) -> None:
+    def _submit(typer_ctx: typer.Context, **kwargs: object) -> SubmittedJob | None:
         original_kwargs = dict(kwargs)
         spec_str: str = cast(str, kwargs.pop("spec", "{}"))
         spec_file: Path | None = cast("Path | None", kwargs.pop("spec_file", None))
@@ -589,13 +614,19 @@ def _add_submit_command(
         if cli is not None and not _output_format_is_json(typer_ctx):
             renderer_cls = cli.get_job_renderer(job_cls, verb="submit")
 
+        resolved_headers: dict[str, str] = {}
+        resolved_base_url = ""
+
         def _do_submit() -> Any:
+            nonlocal resolved_base_url, resolved_headers
+            resolved_base_url = _resolve_submit_base_url(typer_ctx, base_url=base_url, cluster=cluster)
+            resolved_headers = _resolve_submit_auth_headers(typer_ctx)
             submit_kwargs: dict[str, Any] = {
-                "base_url": _resolve_submit_base_url(typer_ctx, base_url=base_url, cluster=cluster),
+                "base_url": resolved_base_url,
                 "workspace": workspace,
                 "profile": profile,
                 "options": merged_options or None,
-                "headers": _resolve_submit_auth_headers(typer_ctx) or None,
+                "headers": resolved_headers or None,
             }
             metadata = _resolve_submit_metadata(typer_ctx)
             if metadata is not None:
@@ -604,6 +635,7 @@ def _add_submit_command(
 
         renderer: CLIRenderer | None = None
         rctx: RendererContext | None = None
+        submitted: SubmittedJob | None = None
         try:
             if renderer_cls is not None:
                 rctx = _make_renderer_context(
@@ -615,6 +647,12 @@ def _add_submit_command(
             else:
                 result = _do_submit()
                 typer.echo(json.dumps(result, indent=2))
+                submitted = SubmittedJob(
+                    response=result if isinstance(result, dict) else {},
+                    base_url=resolved_base_url,
+                    workspace=workspace,
+                    headers=resolved_headers,
+                )
         except (NotImplementedError, ValueError) as exc:
             typer.echo(f"Error: {exc}", err=True)
             raise typer.Exit(code=2) from exc
@@ -630,6 +668,11 @@ def _add_submit_command(
 
         if renderer is not None and rctx is not None:
             renderer.on_complete(ctx=rctx)
+
+        # Only a caller that wraps this callback sees the return value, such as the
+        # Customizer submit override. The CLI entry point discards what `app()`
+        # returns, so this stays invisible to every other job's submit.
+        return submitted
 
     help_text = job_cls.description if command_name == job_cls.name and job_cls.description else "Submit to a cluster."
     epilog = build_epilog(schema=schema, leaves=leaves, kind="Job", unavailable=unavailable)
