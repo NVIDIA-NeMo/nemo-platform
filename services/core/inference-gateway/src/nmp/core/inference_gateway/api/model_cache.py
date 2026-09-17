@@ -297,25 +297,31 @@ async def refresh_model_cache(
             secrets_sdk=secrets_sdk,
         )
 
-    # Skip the entity-map rebuild when the provider layer is byte-for-byte unchanged since
-    # the last cycle. This is a COMPUTE-ONLY optimization — it saves NO network calls (the
-    # provider + entity fetches above/below still run every cycle). What it avoids is the
-    # synchronous O(providers x served_models) rebuild burst (allocating a fresh
-    # ModelEntityInfo per entity + folding prior metadata forward) that otherwise blocks the
-    # async event loop every sleep_duration_s even in steady state; skipping it keeps the loop
-    # responsive for in-flight proxy traffic. The win scales with deployment size.
+    # Skip the entity-map rebuild when the provider layer is unchanged since the last cycle.
+    # This is a COMPUTE-ONLY optimization - it saves NO network calls (the provider + entity
+    # fetches above/below still run every cycle). What it avoids is the synchronous
+    # O(providers x served_models) rebuild burst (allocating a fresh ModelEntityInfo per
+    # entity + folding prior metadata forward) that otherwise blocks the async event loop
+    # every sleep_duration_s even in steady state; skipping it keeps the loop responsive for
+    # in-flight proxy traffic. The win scales with deployment size.
     #
-    # Correctness: the signature covers exactly the rebuild's provider-layer inputs
-    # (provider identity + each provider's served_models). ModelEntity metadata
-    # (spec/finetuning_type/backend_format) is intentionally NOT in the signature — it is
-    # applied in place by update_model_entity_metadata below, independent of the rebuild, so
-    # skipping the rebuild never staleness it. As a cold-start / collision guard we always
+    # Correctness: the signature covers exactly the rebuild's provider-layer inputs -
+    # provider identity + each provider's served_models IN ORDER. The order matters: the
+    # rebuild appends providers to each entity's model_providers list in served_models
+    # order, and consumers select model_providers[0] (proxy / middleware_registry), so a
+    # reorder of same-entity mappings changes routing and MUST invalidate the signature.
+    # Hence served_models is an ordered tuple, not a sorted/set - reordering is a real change.
+    # ModelEntity metadata (spec/finetuning_type/backend_format) is intentionally NOT in the
+    # signature - it is applied in place by update_model_entity_metadata below, independent
+    # of the rebuild, so skipping never staleness it. Provider config (host_url, secret
+    # name/value) is likewise excluded: it propagates through the shared ModelProviderInfo
+    # reference the entity map holds, not via rebuild. As a cold-start guard we always
     # rebuild when the entity map is empty while providers exist.
     entity_map_signature = frozenset(
         (
             mp.workspace,
             mp.name,
-            tuple(sorted((sm.model_entity_id, sm.served_model_name) for sm in (mp.served_models or []))),
+            tuple((sm.model_entity_id, sm.served_model_name) for sm in (mp.served_models or [])),
         )
         for mp in model_providers
     )

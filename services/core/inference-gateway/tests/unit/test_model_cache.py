@@ -942,3 +942,48 @@ async def test_refresh_runs_metadata_update_even_when_rebuild_skipped(mocker, mo
 
     assert rebuild_spy.call_count == 1  # second rebuild skipped (unchanged)
     assert meta_spy.call_count == 2  # metadata update still ran both cycles
+
+
+def _model_provider_getter_with_mappings(mappings: list[tuple[str, str]]):
+    """Provider getter whose single provider serves `mappings` (entity_id, served_name) in order."""
+
+    async def provider_getter():
+        return [
+            ModelProvider(
+                workspace="test",
+                name="provider1",
+                host_url="http://test.com",
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
+                served_models=[
+                    ServedModelMapping(model_entity_id=eid, served_model_name=sname) for eid, sname in mappings
+                ],
+            )
+        ]
+
+    return provider_getter
+
+
+@pytest.mark.asyncio
+async def test_refresh_rebuilds_when_served_models_reordered(mocker, model_cache: ModelCache, mock_nmp_sdk):
+    """Reordering same-entity served-model mappings must invalidate the signature and rebuild.
+
+    The rebuild appends providers to an entity's model_providers list in served_models order,
+    and consumers select model_providers[0] (proxy / middleware_registry). A signature that
+    sorted the mappings would treat a reorder as unchanged and skip the rebuild, silently
+    retaining the stale first backend. The signature preserves order, so a reorder rebuilds.
+    """
+    entity = "test-ns/claude-sonnet"
+    getter_ab = _model_provider_getter_with_mappings([(entity, "backend-a"), (entity, "backend-b")])
+    getter_ba = _model_provider_getter_with_mappings([(entity, "backend-b"), (entity, "backend-a")])
+
+    await refresh_model_cache(model_cache, getter_ab, secrets_sdk=mock_nmp_sdk)
+    # The first-listed backend is selected as model_providers[0].
+    first_before = model_cache.model_entity_info_map[("test-ns", "claude-sonnet")].model_providers[0][0]
+    assert first_before == "backend-a"
+
+    spy = mocker.spy(ModelCache, "rebuild_model_entity_map")
+    await refresh_model_cache(model_cache, getter_ba, secrets_sdk=mock_nmp_sdk)
+    assert spy.call_count == 1  # reorder changed the signature -> rebuild ran
+    first_after = model_cache.model_entity_info_map[("test-ns", "claude-sonnet")].model_providers[0][0]
+    assert first_after == "backend-b"  # routing now reflects the new order
