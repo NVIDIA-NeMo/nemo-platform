@@ -867,3 +867,78 @@ async def test_refresh_model_cache_task_passes_registry(mocker, model_cache: Mod
     # At least one cycle ran and passed the registry through
     assert mock_vm_refresh.await_count >= 1
     assert mock_vm_refresh.call_args.kwargs.get("registry") is registry
+
+
+# ---------------------------------------------------------------------------
+# refresh_model_cache: no-op rebuild skip (provider-layer signature)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_refresh_skips_rebuild_when_provider_layer_unchanged(mocker, model_cache: ModelCache, mock_nmp_sdk):
+    """A second refresh with an identical provider layer skips rebuild_model_entity_map.
+
+    The rebuild is compute-only work; when the provider set + served_models are byte-for-byte
+    unchanged, the entity map cannot have changed, so the rebuild is skipped.
+    """
+    getter = _model_provider_getter_for()
+    spy = mocker.spy(ModelCache, "rebuild_model_entity_map")
+
+    await refresh_model_cache(model_cache, getter, secrets_sdk=mock_nmp_sdk)
+    assert spy.call_count == 1  # first cycle always rebuilds (signature was None)
+
+    await refresh_model_cache(model_cache, getter, secrets_sdk=mock_nmp_sdk)
+    assert spy.call_count == 1  # unchanged provider layer -> rebuild skipped
+
+
+@pytest.mark.asyncio
+async def test_refresh_rebuilds_when_served_model_changes(mocker, model_cache: ModelCache, mock_nmp_sdk):
+    """Changing a provider's served-model id changes the signature and forces a rebuild."""
+    spy = mocker.spy(ModelCache, "rebuild_model_entity_map")
+
+    await refresh_model_cache(
+        model_cache, _model_provider_getter_for(model_entity_id="test/a"), secrets_sdk=mock_nmp_sdk
+    )
+    assert spy.call_count == 1
+
+    # Different served-model id => different signature => rebuild runs again.
+    await refresh_model_cache(
+        model_cache, _model_provider_getter_for(model_entity_id="test/b"), secrets_sdk=mock_nmp_sdk
+    )
+    assert spy.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_refresh_force_rebuilds_when_map_empty_but_providers_exist(mocker, model_cache: ModelCache, mock_nmp_sdk):
+    """Even with a matching signature, an empty entity map while providers exist forces a rebuild.
+
+    Cold-start / signature-collision insurance: never leave routing unpopulated.
+    """
+    getter = _model_provider_getter_for()
+
+    await refresh_model_cache(model_cache, getter, secrets_sdk=mock_nmp_sdk)
+    # Simulate a cache that lost its entity map but kept the (matching) signature.
+    model_cache.model_entity_info_map = {}
+    spy = mocker.spy(ModelCache, "rebuild_model_entity_map")
+
+    await refresh_model_cache(model_cache, getter, secrets_sdk=mock_nmp_sdk)
+    assert spy.call_count == 1  # forced rebuild despite unchanged signature
+
+
+@pytest.mark.asyncio
+async def test_refresh_runs_metadata_update_even_when_rebuild_skipped(mocker, model_cache: ModelCache, mock_nmp_sdk):
+    """update_model_entity_metadata runs every cycle, independent of the rebuild skip.
+
+    Metadata (spec/finetuning_type/backend_format) is applied in place, so it must not be
+    gated by the rebuild signature.
+    """
+    getter = _model_provider_getter_for(model_entity_id="test-ns/claude-sonnet")
+    entity_getter = _model_entity_getter_for(_model_entity())
+    meta_spy = mocker.spy(ModelCache, "update_model_entity_metadata")
+    rebuild_spy = mocker.spy(ModelCache, "rebuild_model_entity_map")
+
+    await refresh_model_cache(model_cache, getter, secrets_sdk=mock_nmp_sdk, model_entity_getter=entity_getter)
+    await refresh_model_cache(model_cache, getter, secrets_sdk=mock_nmp_sdk, model_entity_getter=entity_getter)
+
+    assert rebuild_spy.call_count == 1  # second rebuild skipped (unchanged)
+    assert meta_spy.call_count == 2  # metadata update still ran both cycles
