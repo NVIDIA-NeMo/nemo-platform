@@ -43,6 +43,7 @@ from nemo_agents_plugin.jobs.execute_extensions import (
     run_execute_agent_after_invoke_extension,
     validate_execute_agent_extension_config,
 )
+from nemo_agents_plugin.jobs.job_usage import fabric_output_token_usage
 from nemo_agents_plugin.tasks.execute.workdir import (
     AgentWorkdir,
     materialize_agent_workdir,
@@ -497,6 +498,10 @@ class ExecuteAgentJob(NemoJob):
             raise
 
         logger.info("Agent %s returned status=%s after %.1fs.", agent_ref, result.status, time.monotonic() - started_at)
+
+        usage = fabric_output_token_usage(result.output)
+        if usage is not None:
+            ctx.usage.report_totals(input_tokens=usage.input_tokens, output_tokens=usage.output_tokens)
 
         fabric_run_result_ref = _save_json_result(
             ctx,
