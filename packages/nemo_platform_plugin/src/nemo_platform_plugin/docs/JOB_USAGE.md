@@ -44,8 +44,12 @@ reviewed independently.
 
 - Normalize OpenAI, Responses, Anthropic, ATIF, and Harbor usage vocabularies.
 - Aggregate raw executions rather than medians or presentation summaries.
-- Define whether whole-job usage includes target calls, judge calls, retries,
-  cache reads, and cache creation before implementation.
+- Count evaluated target calls and judge calls. For runner targets, combine the
+  runner's typed trial measurements with locally observed judge requests; for
+  HTTP model and agent targets, use request logs alone to avoid double-counting.
+- Treat provider input totals as inclusive of cache reads and cache creation;
+  those dimensions remain available in evaluator artifacts but are not added a
+  second time to platform input tokens.
 - Avoid presenting partial usage as complete when some calls omit counts.
 
 ### Agents
