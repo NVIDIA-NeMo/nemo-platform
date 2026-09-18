@@ -5,6 +5,7 @@ import shutil
 import tempfile
 from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
@@ -78,15 +79,40 @@ class _FakeSdk:
         self.files = _FakeFiles(ethos=ethos)
 
 
+class _FakeFilesetManager:
+    """Stands in for FilesetFileManager, forwarding uploads to sdk.files like the
+    generated-SDK-backed ``upload_to_fileset`` call used to do directly."""
+
+    def __init__(self, sdk: _FakeSdk, *, workspace: str, fileset: str) -> None:
+        self._sdk = sdk
+        self._workspace = workspace
+        self._fileset = fileset
+
+    def validate_storage(self) -> None:
+        pass
+
+    def upload(self, *, local_path: Path, remote_path: str) -> Any:
+        return self._sdk.files.upload(fileset=self._fileset, workspace=self._workspace, local_path=str(local_path))
+
+
 def _register(sdk: _FakeSdk, optimized: dict[str, Any] | None = None, name: str = "my-agent-opt") -> Any:
-    return register_optimized_agent(
-        optimized if optimized is not None else _config(name),
-        name=name,
-        source_agent="my-agent",
-        source_workspace="my-ws",
-        workspace="my-ws",
-        sdk=sdk,
-    )
+    with (
+        patch("nemo_agents_plugin.jobs.fileset_io.client_from_platform", return_value=MagicMock()),
+        patch(
+            "nemo_agents_plugin.jobs.fileset_io._fileset_manager",
+            side_effect=lambda _files_client, *, workspace, fileset, ensure_fileset_exists: _FakeFilesetManager(
+                sdk, workspace=workspace, fileset=fileset
+            ),
+        ),
+    ):
+        return register_optimized_agent(
+            optimized if optimized is not None else _config(name),
+            name=name,
+            source_agent="my-agent",
+            source_workspace="my-ws",
+            workspace="my-ws",
+            sdk=sdk,
+        )
 
 
 def test_creates_the_agent_entity_as_nemo_agents_spec_v1() -> None:
