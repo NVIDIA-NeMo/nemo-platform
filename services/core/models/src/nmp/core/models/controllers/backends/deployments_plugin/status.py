@@ -5,8 +5,7 @@
 
 from typing import Any, Iterable
 
-from nemo_deployments_plugin.entities import Deployment, Volume
-from nemo_deployments_plugin.types import Endpoint
+from nemo_platform_plugin.deployments.types import Deployment, Endpoint, Volume
 from nemo_platform_plugin.models.types import ModelDeploymentStatus
 from nmp.core.models.controllers.backends.backends import DeploymentStatusUpdate
 from nmp.core.models.controllers.backends.common import format_duration
