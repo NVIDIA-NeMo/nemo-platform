@@ -27,6 +27,7 @@ __all__ = [
     "ModelEntityId",
     "ADAPTERS_INFIX",
     "parse_adapters_suffix",
+    "format_adapter_composite",
 ]
 
 #: The infix that separates a base model from its LoRA adapter inside a composite
