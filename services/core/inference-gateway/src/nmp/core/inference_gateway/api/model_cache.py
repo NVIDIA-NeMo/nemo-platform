@@ -128,10 +128,8 @@ class ModelCache:
             served_models = model_provider_info.model_provider.served_models or []
             for served_model in served_models:
                 # First-"/"-only split (preserving a LoRA composite as the entity name) via the
-                # shared parser; a malformed id (no "/" or empty segment) raises ValueError,
-                # which we log and skip — preserving the prior inline behavior. (The shared parser
-                # additionally strips surrounding whitespace, so a padded-but-valid id keys under
-                # the trimmed workspace/name rather than the padded form.)
+                # shared parser; a malformed id (no "/" or empty segment) raises ValueError, which
+                # we log and skip. The parser also strips surrounding whitespace.
                 try:
                     ref = parse_model_entity_ref(served_model.model_entity_id)
                 except ValueError:
@@ -300,28 +298,17 @@ async def refresh_model_cache(
             secrets_sdk=secrets_sdk,
         )
 
-    # Skip the entity-map rebuild when the provider layer is unchanged since the last cycle.
-    # This is a COMPUTE-ONLY optimization - it saves NO network calls (the provider + entity
-    # fetches above/below still run every cycle). What it avoids is the synchronous
-    # O(providers x served_models) rebuild burst (allocating a fresh ModelEntityInfo per
-    # entity + folding prior metadata forward) that otherwise blocks the async event loop
-    # every sleep_duration_s even in steady state; skipping it keeps the loop responsive for
-    # in-flight proxy traffic. The win scales with deployment size.
+    # Skip the entity-map rebuild when the provider layer is unchanged since the last
+    # cycle. Compute-only optimization: it saves no network calls, but avoids the
+    # synchronous O(providers x served_models) rebuild burst on the event loop every cycle.
     #
-    # Correctness: the signature covers exactly the rebuild's provider-layer inputs -
-    # provider identity + each provider's served_models IN ORDER. The order matters: the
-    # rebuild appends providers to each entity's model_providers list in served_models
-    # order, and consumers select model_providers[0] (proxy / middleware_registry), so a
-    # reorder of same-entity mappings changes routing and MUST invalidate the signature.
-    # Hence served_models is an ordered tuple, not a sorted/set - reordering is a real change.
-    # ModelEntity metadata (spec/finetuning_type/backend_format) is intentionally NOT in the
-    # signature - it is applied in place by update_model_entity_metadata below, independent
-    # of the rebuild, so skipping never staleness it. Provider config (host_url, secret
-    # name/value) is likewise excluded: it propagates through the shared ModelProviderInfo
-    # reference the entity map holds, not via rebuild. Cold start is covered by the initial
-    # signature being None (the first cycle always rebuilds), so an empty entity map with an
-    # unchanged signature is a valid steady state (providers with no/empty served_models, or
-    # only malformed ids) and is correctly skipped rather than rebuilt every cycle.
+    # The signature is order-sensitive over each provider's served_models because the
+    # rebuild appends to model_providers[] in that order and consumers pick [0] — a reorder
+    # is a real routing change and must invalidate. Metadata (spec/finetuning_type/
+    # backend_format) and provider config (host_url/secrets) are excluded: both are applied
+    # in place, not via rebuild. Cold start is covered by the initial None signature, so an
+    # empty map with an unchanged signature (no served_models yet, or only malformed ids) is
+    # a valid steady state and is correctly skipped.
     entity_map_signature = frozenset(
         (
             mp.workspace,
