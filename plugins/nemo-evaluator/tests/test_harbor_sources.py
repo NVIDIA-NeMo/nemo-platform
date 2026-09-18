@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+from typing import cast
+
 import pytest
 from nemo_evaluator.jobs.agent_spec import AgentEvalInputSpec, AgentEvalSpec
 from pydantic import ValidationError
@@ -52,7 +54,8 @@ def test_canonical_source_rejects_duplicate_identity_and_nonharbor_target():
 
 
 def test_worker_without_clients_fails_before_allocating_inputs(tmp_path):
-    from nemo_evaluator.jobs.agent_evaluate import AgentEvalJob
+    from nemo_evaluator.jobs.agent_evaluate import AsyncAgentEvalJob
+    from nemo_platform_plugin.client.client import AsyncNemoClient
     from nemo_platform_plugin.job_context import JobContext, StoragePaths
     from nemo_platform_plugin.job_results import LocalJobResults
 
@@ -66,12 +69,13 @@ def test_worker_without_clients_fails_before_allocating_inputs(tmp_path):
         results=LocalJobResults(root=tmp_path / "results"),
     )
     with pytest.raises(ValueError, match="authenticated platform client"):
-        AgentEvalJob().run(
+        AsyncAgentEvalJob().run(
             {
                 "tasks": {"kind": "harbor-taskset", "taskset_ref": f"default/suite#{DIGEST}"},
                 "target": {"kind": "harbor"},
             },
             ctx=ctx,
+            async_client=cast(AsyncNemoClient, None),
         )
     assert not (tmp_path / "persistent" / "harbor-inputs").exists()
 
