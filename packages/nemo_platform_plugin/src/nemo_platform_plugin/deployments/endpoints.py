@@ -5,10 +5,12 @@
 
 Single source of truth for the HTTP contract (paths carry the
 ``/apis/deployments`` gateway prefix) — full CRUD for Volumes, Deployments, and
-DeploymentConfigs. The ``DELETE`` routes are soft-deletes: they set the entity's
-status to ``DELETING`` and return ``204``, then the reconciler tears down the
-backing resource and removes the entity — so ``delete_*`` returns ``None`` and
-the caller polls ``get_*`` for teardown.
+DeploymentConfigs. All ``DELETE`` routes return ``204``. Volume and Deployment
+deletes are soft: they set the entity's status to ``DELETING`` and the
+reconciler then tears down the backing resource and removes the entity, so the
+caller polls ``get_*`` for teardown. DeploymentConfig delete is immediate (a
+hard entity delete, guarded by a referential 409 if a deployment still uses it).
+All ``delete_*`` methods return ``None``.
 """
 
 from __future__ import annotations

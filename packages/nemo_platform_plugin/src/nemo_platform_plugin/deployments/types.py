@@ -356,6 +356,13 @@ class CreateDeploymentRequest(BaseModel):
 
 # ---------------------------------------------------------------------------
 # Query parameter types
+#
+# Per-field filtering goes through the ``filter`` param as a JSON-encoded string
+# (e.g. ``filter=json.dumps({"status": "BOUND"})``) or the server's
+# ``filter[field]=value`` deep-object form — the plugin's filter parser ignores
+# bare top-level keys like ``status=BOUND``. This mirrors the models/jobs
+# clients, which expose only ``filter`` (not per-field params). ``status_in`` on
+# deployments is the exception: it is a real explicit query param on that route.
 # ---------------------------------------------------------------------------
 
 
@@ -364,7 +371,6 @@ class ListVolumesQueryParams(TypedDict, total=False):
     page_size: NotRequired[int]
     sort: NotRequired[str]
     filter: NotRequired[str]
-    status: NotRequired[VolumeStatus]
 
 
 class ListDeploymentsQueryParams(TypedDict, total=False):
@@ -373,10 +379,6 @@ class ListDeploymentsQueryParams(TypedDict, total=False):
     sort: NotRequired[str]
     filter: NotRequired[str]
     status_in: NotRequired[str]
-    deployment_config: NotRequired[str]
-    desired_state: NotRequired[DesiredState]
-    executor: NotRequired[str]
-    status: NotRequired[DeploymentStatus]
 
 
 class ListDeploymentConfigsQueryParams(TypedDict, total=False):
@@ -384,4 +386,3 @@ class ListDeploymentConfigsQueryParams(TypedDict, total=False):
     page_size: NotRequired[int]
     sort: NotRequired[str]
     filter: NotRequired[str]
-    restart_policy: NotRequired[RestartPolicy]

@@ -91,32 +91,35 @@ def test_get_volume_parses_status() -> None:
     )
     client = DeploymentsClient(base_url=BASE, workspace=WS, http_client=mock)
 
-    vol = client.get("weights")
+    vol = client.get_volume(name="weights").data()
 
     assert vol.status == "BOUND"
 
 
-def test_list_volumes_filters_and_iterates() -> None:
+def test_list_volumes_iterates_and_passes_json_filter() -> None:
     mock = _sync(
-        _page([{"name": "a", "workspace": WS, "status": "BOUND"}, {"name": "b", "workspace": WS, "status": "PENDING"}]),
+        _page([{"name": "a", "workspace": WS, "status": "BOUND"}]),
         200,
         "GET",
         f"{BASE}/apis/deployments/v2/workspaces/{WS}/volumes",
     )
     client = DeploymentsClient(base_url=BASE, workspace=WS, http_client=mock)
 
-    vols = client.list(query_params={"status": "BOUND"})
+    # Per-field filtering goes through the `filter` param as a JSON string — a
+    # bare `status=BOUND` query param is silently dropped by the plugin's filter
+    # parser (it only reads bracket/deep-object keys).
+    filter_str = json.dumps({"status": "BOUND"})
+    vols = list(client.list_volumes(query_params={"filter": filter_str}).items())
 
-    assert [(v.name, v.status) for v in vols] == [("a", "BOUND"), ("b", "PENDING")]
-    _, kwargs = mock.request.call_args
-    assert kwargs["params"] == {"status": "BOUND"}
+    assert [(v.name, v.status) for v in vols] == [("a", "BOUND")]
+    assert mock.request.call_args.kwargs["params"] == {"filter": filter_str}
 
 
 def test_delete_volume_returns_none_and_calls_delete() -> None:
     mock = _sync(None, 204, "DELETE", f"{BASE}/apis/deployments/v2/workspaces/{WS}/volumes/weights")
     client = DeploymentsClient(base_url=BASE, workspace=WS, http_client=mock)
 
-    assert client.delete("weights") is None
+    assert client.delete_volume(name="weights").data() is None
     assert mock.request.call_args.args[0] == "DELETE"
 
 
@@ -147,13 +150,13 @@ def test_create_deployment_config_serializes_set_fields() -> None:
     )
     client = DeploymentsClient(base_url=BASE, workspace=WS, http_client=mock)
 
-    cfg = client.create_config(
-        CreateDeploymentConfigRequest(
+    cfg = client.create_deployment_config(
+        body=CreateDeploymentConfigRequest(
             name="srv",
             restart_policy="OnFailure",
             containers=[RequestContainer(name="main", image="vllm:latest")],
         )
-    )
+    ).data()
 
     assert isinstance(cfg, DeploymentConfig)
     assert cfg.name == "srv"
@@ -167,11 +170,39 @@ def test_create_deployment_config_serializes_set_fields() -> None:
     assert "init_containers" not in body  # unset field omitted
 
 
+def test_get_deployment_config_parses_config() -> None:
+    mock = _sync(
+        {"name": "srv", "workspace": WS, "restartPolicy": "Always", "backoffLimit": 6},
+        200,
+        "GET",
+        f"{BASE}/apis/deployments/v2/workspaces/{WS}/deployment-configs/srv",
+    )
+    client = DeploymentsClient(base_url=BASE, workspace=WS, http_client=mock)
+
+    cfg = client.get_deployment_config(name="srv").data()
+
+    assert (cfg.name, cfg.restart_policy, cfg.backoff_limit) == ("srv", "Always", 6)
+
+
+def test_list_deployment_configs_iterates() -> None:
+    mock = _sync(
+        _page([{"name": "srv", "workspace": WS}]),
+        200,
+        "GET",
+        f"{BASE}/apis/deployments/v2/workspaces/{WS}/deployment-configs",
+    )
+    client = DeploymentsClient(base_url=BASE, workspace=WS, http_client=mock)
+
+    cfgs = list(client.list_deployment_configs().items())
+
+    assert [c.name for c in cfgs] == ["srv"]
+
+
 def test_delete_deployment_config_hits_hyphenated_path() -> None:
     mock = _sync(None, 204, "DELETE", f"{BASE}/apis/deployments/v2/workspaces/{WS}/deployment-configs/srv")
     client = DeploymentsClient(base_url=BASE, workspace=WS, http_client=mock)
 
-    client.delete_config("srv")
+    client.delete_deployment_config(name="srv").data()
 
     assert mock.request.call_args.args[1].endswith("/deployment-configs/srv")
 
@@ -190,10 +221,24 @@ def test_create_deployment_parses_deployment() -> None:
     )
     client = DeploymentsClient(base_url=BASE, workspace=WS, http_client=mock)
 
-    dep = client.create_deploy(CreateDeploymentRequest(name="srv", deployment_config="srv"))
+    dep = client.create_deployment(body=CreateDeploymentRequest(name="srv", deployment_config="srv")).data()
 
     assert isinstance(dep, Deployment)
     assert (dep.name, dep.deployment_config, dep.status) == ("srv", "srv", "PENDING")
+
+
+def test_get_deployment_parses_deployment() -> None:
+    mock = _sync(
+        {"name": "srv", "workspace": WS, "deployment_config": "srv", "status": "READY"},
+        200,
+        "GET",
+        f"{BASE}/apis/deployments/v2/workspaces/{WS}/deployments/srv",
+    )
+    client = DeploymentsClient(base_url=BASE, workspace=WS, http_client=mock)
+
+    dep = client.get_deployment(name="srv").data()
+
+    assert dep.status == "READY"
 
 
 def test_list_deployments_passes_status_in() -> None:
@@ -205,7 +250,7 @@ def test_list_deployments_passes_status_in() -> None:
     )
     client = DeploymentsClient(base_url=BASE, workspace=WS, http_client=mock)
 
-    deps = client.list_deploys(query_params={"status_in": "PENDING,STARTING,READY"})
+    deps = list(client.list_deployments(query_params={"status_in": "PENDING,STARTING,READY"}).items())
 
     assert [d.name for d in deps] == ["srv"]
     assert mock.request.call_args.kwargs["params"] == {"status_in": "PENDING,STARTING,READY"}
@@ -215,7 +260,7 @@ def test_delete_deployment_returns_none() -> None:
     mock = _sync(None, 204, "DELETE", f"{BASE}/apis/deployments/v2/workspaces/{WS}/deployments/srv")
     client = DeploymentsClient(base_url=BASE, workspace=WS, http_client=mock)
 
-    assert client.delete_deploy("srv") is None
+    assert client.delete_deployment(name="srv").data() is None
 
 
 # ---------------------------------------------------------------------------
@@ -235,7 +280,7 @@ async def test_async_create_and_list_volumes() -> None:
     )
     client = AsyncDeploymentsClient(base_url=BASE, workspace=WS, http_client=mock)
 
-    vol = await client.create(CreateVolumeRequest(name="weights"))
+    vol = (await client.create_volume(body=CreateVolumeRequest(name="weights"))).data()
     assert vol.name == "weights"
 
     mock.request = AsyncMock(
@@ -245,8 +290,9 @@ async def test_async_create_and_list_volumes() -> None:
             json=_page([{"name": "weights", "workspace": WS, "status": "BOUND"}]),
         )
     )
-    vols = await client.list()
-    assert [v.name for v in vols] == ["weights"]
+    response = await client.list_volumes()
+    names = [v.name async for v in response.items()]
+    assert names == ["weights"]
 
 
 @pytest.mark.asyncio
@@ -259,4 +305,4 @@ async def test_async_delete_deployment_returns_none() -> None:
     )
     client = AsyncDeploymentsClient(base_url=BASE, workspace=WS, http_client=mock)
 
-    assert await client.delete_deploy("srv") is None
+    assert (await client.delete_deployment(name="srv")).data() is None
