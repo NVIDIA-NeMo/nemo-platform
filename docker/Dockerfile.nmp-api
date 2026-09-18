@@ -36,6 +36,26 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --active --only-group functional-services --no-editable \
     --reinstall-package annoy --refresh-package annoy --no-binary-package annoy --no-cache
 
+# Native Switchyard (switchyard_rust) is off by default. An empty ARG keeps May
+# switchyard.lib from switchyard-vendored. The current plugin imports
+# switchyard.lib, not libsy, so a native libsy-only tree intentionally fails the
+# validation below until the adapter lands. nmp-python-base has no rustc: pass a
+# wheel or another complete uv pip spec, never a bare source tag.
+ARG SWITCHYARD_NATIVE_REF=
+RUN --mount=type=cache,target=/root/.cache/uv \
+    if [ -n "${SWITCHYARD_NATIVE_REF}" ]; then \
+      case "${SWITCHYARD_NATIVE_REF}" in \
+        git+*|http://*|https://*|file:*|/*.whl|/*|*.whl|nemo-switchyard==*) spec="${SWITCHYARD_NATIVE_REF}" ;; \
+        *) echo "FATAL: SWITCHYARD_NATIVE_REF must be a wheel, absolute path, or complete uv pip spec; bare tags cannot build because nmp-python-base has no rustc"; exit 1 ;; \
+      esac; \
+      uv pip uninstall --python /app/.venv/bin/python switchyard-vendored; \
+      uv pip install --python /app/.venv/bin/python "${spec}"; \
+      /app/.venv/bin/python -c "import switchyard_rust; import nemo_switchyard.middleware" || { \
+        echo "FATAL: native Switchyard validation failed: missing extension, incompatible ABI, or plugin/May API mismatch"; \
+        exit 1; \
+      }; \
+    fi
+
 # Fail the build if pip is broken or duplicated (regression guard).
 RUN /app/.venv/bin/pip --version && \
     test "$(ls -d /app/.venv/lib/python3.13/site-packages/pip-*.dist-info | wc -l)" -eq 1
