@@ -61,6 +61,32 @@ def parse_adapters_suffix(name: str) -> tuple[str, str, str] | None:
     return base, adapter_workspace, adapter_name
 
 
+def format_adapter_composite(base_prefix: str, adapter_workspace: str, adapter_name: str) -> str:
+    """Join a base prefix and adapter segments into a LoRA-composite id.
+
+    The single home for the LoRA-composite grammar's *format* (join) side — the inverse
+    of :func:`parse_adapters_suffix`. Renders ``{base_prefix}&adapters/{adapter_workspace}/{adapter_name}``.
+
+    ``base_prefix`` is used **verbatim** and is NOT parsed or validated: it may be a
+    workspace-qualified base id (``{workspace}/{base_name}``), a bare name, or an
+    otherwise-unrestricted field. This is deliberate — the two production construction
+    sites (the models-service reconciler's ``_resolve_base_backend_model_id`` output,
+    which may be unqualified, and the IGW proxy's ``default_model_entity``, an
+    unrestricted field) must not raise on an opaque prefix. Owning only the infix join
+    here consolidates the grammar without imposing a ``workspace/base_name`` split that
+    those sites cannot guarantee.
+
+    Args:
+        base_prefix: The base id/prefix, used verbatim as everything before ``&adapters/``.
+        adapter_workspace: The adapter's workspace segment.
+        adapter_name: The adapter's name segment.
+
+    Returns:
+        The composite id ``{base_prefix}&adapters/{adapter_workspace}/{adapter_name}``.
+    """
+    return f"{base_prefix}{ADAPTERS_INFIX}{adapter_workspace}/{adapter_name}"
+
+
 def get_random_id(prefix: str) -> str:
     """Generate a random ID with the given prefix.
 
@@ -419,11 +445,13 @@ class ModelEntityId:
 
         Round-trips :meth:`parse`: a plain id renders as ``{workspace}/{base_name}``; a
         LoRA id renders as ``{workspace}/{base_name}&adapters/{adapter_workspace}/{adapter_name}``.
-        This is the format side of the grammar — the single home for constructing composite
-        ids (previously hand-rolled f-strings in the reconciler and the IGW proxy splice).
+        Delegates the composite join to :func:`format_adapter_composite`, the shared
+        format-side home for the grammar.
         """
         if self.is_lora:
-            return f"{self.base_id}{ADAPTERS_INFIX}{self.adapter_workspace}/{self.adapter_name}"
+            # is_lora guarantees both adapter fields are non-None (see __post_init__).
+            assert self.adapter_workspace is not None and self.adapter_name is not None
+            return format_adapter_composite(self.base_id, self.adapter_workspace, self.adapter_name)
         return self.base_id
 
     def __str__(self) -> str:
