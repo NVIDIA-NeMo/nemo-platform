@@ -25,6 +25,7 @@ from nemo_agents_plugin.entities import (
     AgentDeployment,
     AgentEnvironment,
     AgentEnvironmentSpec,
+    AgentSandboxSpec,
     ComputeResources,
     DeploymentStatus,
 )
@@ -426,6 +427,7 @@ class TestCreateDeployment:
             name="env1",
             workspace="default",
             environment_spec="default/espec",
+            sandbox_spec="default/sspec",
             compute_spec="default/cspec",
         )
         espec = AgentEnvironmentSpec(
@@ -434,11 +436,17 @@ class TestCreateDeployment:
             env={"CUSTOM": "from-spec"},
             secrets={"APP_TOKEN": "default/app-token"},
         )
+        sspec = AgentSandboxSpec(
+            name="sspec",
+            workspace="default",
+            provider="openshell",
+            provider_config={"timeout": 30},
+        )
         cspec = AgentComputeSpec(name="cspec", workspace="default", resources=ComputeResources(limits={"cpu": "2"}))
 
         mock_entity_client = AsyncMock()
-        # get order: agent (route), then AgentEnvironment, env spec, compute spec (resolver).
-        mock_entity_client.get = AsyncMock(side_effect=[agent, environment, espec, cspec])
+        # get order: agent (route), then AgentEnvironment, env spec, sandbox spec, compute spec (resolver).
+        mock_entity_client.get = AsyncMock(side_effect=[agent, environment, espec, sspec, cspec])
 
         async def _save_deployment(deployment: AgentDeployment) -> AgentDeployment:
             deployment._id = f"deployment-{deployment.name}-id"
@@ -459,6 +467,10 @@ class TestCreateDeployment:
         assert created.environment == "default/env1"
         # Environment spec env merged into the resolved config.
         assert created.config["environment"]["env"]["CUSTOM"] == "from-spec"
+        # Sandbox spec snapshotted onto the deployment.
+        assert created.sandbox is not None
+        assert created.sandbox.provider == "openshell"
+        assert created.sandbox.provider_config == {"timeout": 30}
         # Compute spec snapshotted onto the deployment.
         assert created.compute is not None
         assert created.compute.resources.limits == {"cpu": "2"}
@@ -486,6 +498,7 @@ class TestCreateDeployment:
                 "name": "fabric-dep",
                 "environment": {
                     "environment_spec": {"env": {"INLINE": "yes"}},
+                    "sandbox_spec": {"provider": "openshell", "provider_config": {"timeout": 30}},
                     "compute_spec": {"resources": {"requests": {"cpu": "1"}}},
                 },
             },
@@ -494,10 +507,41 @@ class TestCreateDeployment:
         assert resp.status_code == 201
         created: AgentDeployment = mock_entity_client.create.call_args[0][0]
         assert created.config["environment"]["env"]["INLINE"] == "yes"
+        assert created.sandbox is not None
+        assert created.sandbox.provider == "openshell"
+        assert created.sandbox.provider_config == {"timeout": 30}
         assert created.compute is not None
         assert created.compute.resources.requests == {"cpu": "1"}
         # Only the agent lookup hit the entity store; inline specs need no deref.
         assert mock_entity_client.get.await_count == 1
+
+    @pytest.mark.parametrize(
+        ("sandbox_spec", "detail_fragment"),
+        [
+            ({"provider": "not-a-provider"}, "Unknown sandbox provider 'not-a-provider'"),
+            ({"provider": "openshell", "provider_config": {"policy_path": {"a": 1}}}, "rejected provider_config"),
+        ],
+        ids=["unknown-provider", "invalid-provider-config"],
+    )
+    def test_create_rejects_sandbox_the_substrate_cannot_honour(
+        self, sandbox_spec: dict[str, Any], detail_fragment: str
+    ) -> None:
+        # The runner would fail the deployment on reconcile; the answer is known
+        # at create time, so the caller gets a 400 and no pending entity exists.
+        agent = _make_agent()
+        mock_entity_client = AsyncMock()
+        mock_entity_client.get = AsyncMock(return_value=agent)
+        mock_entity_client.create = AsyncMock()
+        client = _test_client(mock_entity_client)
+
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/deployments",
+            json={"agent": "fabric-agent", "environment": {"sandbox_spec": sandbox_spec}},
+        )
+
+        assert resp.status_code == 400
+        assert detail_fragment in resp.json()["detail"]
+        mock_entity_client.create.assert_not_awaited()
 
     def test_create_rejects_missing_environment_ref(self) -> None:
         agent = _make_agent()
