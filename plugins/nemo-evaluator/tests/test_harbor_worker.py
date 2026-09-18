@@ -129,13 +129,16 @@ def test_worker_passes_verified_ordered_tasks_to_public_evaluator(tmp_path, stor
         results=LocalJobResults(root=tmp_path / "results"),
     )
     evaluator = MagicMock()
-    job_type = AgentEvalJob if transport == "sync" else AsyncAgentEvalJob
-    monkeypatch.setattr(job_type, "_build_evaluator", lambda *args: evaluator)
     # Stop after the public run boundary; persistence is covered by the existing worker tests.
     evaluator.run_sync.side_effect = RuntimeError("captured public evaluator")
+    config = {"tasks": source.model_dump(mode="json"), "target": {"kind": "harbor"}}
     with pytest.raises(RuntimeError, match="captured public evaluator"):
-        kwargs = {"client": sdk} if transport == "sync" else {"async_client": async_sdk}
-        job_type().run({"tasks": source.model_dump(mode="json"), "target": {"kind": "harbor"}}, ctx=ctx, **kwargs)
+        if transport == "sync":
+            monkeypatch.setattr(AgentEvalJob, "_build_evaluator", lambda *args: evaluator)
+            AgentEvalJob().run(config, ctx=ctx, client=sdk)
+        else:
+            monkeypatch.setattr(AsyncAgentEvalJob, "_build_evaluator", lambda *args: evaluator)
+            AsyncAgentEvalJob().run(config, ctx=ctx, async_client=async_sdk)
     tasks = evaluator.run_sync.call_args.kwargs["tasks"]
     assert [task.id for task in tasks] == ["commerce/checkout", "commerce/search"]
     assert [Path(task.metadata["harbor_task_dir"]).name for task in tasks] == ["z-folder", "a-folder"]

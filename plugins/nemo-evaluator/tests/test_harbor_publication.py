@@ -291,4 +291,5 @@ async def test_registration_root_does_not_collide_with_download(root, entity_sto
     )
     task, published = await service.create_task("stored", TaskInput(spec=definition), workspace="default")
     assert published
+    assert isinstance(task.spec, HarborTaskDefinition)
     assert task.spec.instruction == "Do it"

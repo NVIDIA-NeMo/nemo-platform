@@ -131,9 +131,9 @@ print(taskset.taskset_ref) # default/suite#<entity-content-hash>
 ```
 
 - Registration defaults to enabled in `upload_harbor_task()`. Pass `register=False` to receive verified archive definitions without
-creating Tasks or a Taskset. 
+creating Tasks or a Taskset.
 - Repeated identical uploads reuse artifacts and entity revisions.
-- Different existing entity content raises a conflict unless `replace=True` is explicit. 
+- Different existing entity content raises a conflict unless `replace=True` is explicit.
 - Write responses return the content digest of the revision published by that operation, even if a concurrent writer has since advanced the latest revision.
 
 The helpers compose archive publication with the existing task and taskset resource APIs.
@@ -165,7 +165,7 @@ print(task.name, task.revision, published.content_hash)
 
 - The explicit `create()` requires a new task name; rerunning it with an existing name fails.
 Use the combined helper above for identical-content reuse and explicit `replace=True` behavior.
-- The resource response's `revision` is an ordinal, not a digest reference. 
+- The resource response's `revision` is an ordinal, not a digest reference.
 - The combined helper looks up and verifies that exact revision before returning `task_ref`, so it remains correct
 even if another writer advances the task's head. Dataset publication also preflights every
 local task before uploading and reports partial progress if a later operation fails.
@@ -586,6 +586,9 @@ target = HarborRunnerTarget(
 Replace the model and secret reference with values available to your account. The task image needs
 network access and the system tools Harbor's Codex adapter uses to install the CLI. The CLI version
 above is an explicit reproducibility pin, not a platform-wide default.
+
+For a complete runnable example, see the
+[Harbor taskset evaluation notebook](https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/plugins/nemo-evaluator/examples/harbor_taskset/harbor_taskset_e2e.ipynb).
 
 ## How scoring works
 

@@ -127,4 +127,3 @@ eval:
       judge_llm_prompt: >
         Score whether the agent correctly classified the email as phishing or
         benign compared to the expected label. Return JSON only.
-
