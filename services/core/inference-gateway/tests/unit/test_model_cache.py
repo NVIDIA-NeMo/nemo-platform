@@ -909,20 +909,25 @@ async def test_refresh_rebuilds_when_served_model_changes(mocker, model_cache: M
 
 
 @pytest.mark.asyncio
-async def test_refresh_force_rebuilds_when_map_empty_but_providers_exist(mocker, model_cache: ModelCache, mock_nmp_sdk):
-    """Even with a matching signature, an empty entity map while providers exist forces a rebuild.
+async def test_refresh_skips_rebuild_when_map_empty_and_signature_unchanged(
+    mocker, model_cache: ModelCache, mock_nmp_sdk
+):
+    """An empty entity map with an unchanged signature is a valid steady state and is skipped.
 
-    Cold-start / signature-collision insurance: never leave routing unpopulated.
+    Providers can legitimately produce an empty map (no/empty served_models before autodiscovery,
+    or only malformed ids). Cold start is already covered by the initial signature being None, so
+    once the signature is set, a still-empty map with a matching signature must NOT trigger a
+    rebuild every cycle (which would defeat the optimization and re-spam malformed-id warnings).
     """
     getter = _model_provider_getter_for()
 
     await refresh_model_cache(model_cache, getter, secrets_sdk=mock_nmp_sdk)
-    # Simulate a cache that lost its entity map but kept the (matching) signature.
+    # Simulate a cache whose entity map is empty while the (matching) signature is retained.
     model_cache.model_entity_info_map = {}
     spy = mocker.spy(ModelCache, "rebuild_model_entity_map")
 
     await refresh_model_cache(model_cache, getter, secrets_sdk=mock_nmp_sdk)
-    assert spy.call_count == 1  # forced rebuild despite unchanged signature
+    assert spy.call_count == 0  # unchanged signature -> skipped even though the map is empty
 
 
 @pytest.mark.asyncio

@@ -99,7 +99,8 @@ class ModelCache:
 
     Used by :func:`refresh_model_cache` to skip a redundant rebuild when the provider set
     and its served-models are unchanged since the previous cycle. ``None`` means "no rebuild
-    has run yet" (forces the first rebuild). See :meth:`entity_map_signature`.
+    has run yet" (forces the first rebuild); the signature is computed inline in
+    :func:`refresh_model_cache`.
     """
 
     def get_from_provider(self, workspace: str, provider_name: str) -> ModelProviderInfo | None:
@@ -128,7 +129,9 @@ class ModelCache:
             for served_model in served_models:
                 # First-"/"-only split (preserving a LoRA composite as the entity name) via the
                 # shared parser; a malformed id (no "/" or empty segment) raises ValueError,
-                # which we log and skip — preserving the prior inline behavior.
+                # which we log and skip — preserving the prior inline behavior. (The shared parser
+                # additionally strips surrounding whitespace, so a padded-but-valid id keys under
+                # the trimmed workspace/name rather than the padded form.)
                 try:
                     ref = parse_model_entity_ref(served_model.model_entity_id)
                 except ValueError:
@@ -315,8 +318,10 @@ async def refresh_model_cache(
     # signature - it is applied in place by update_model_entity_metadata below, independent
     # of the rebuild, so skipping never staleness it. Provider config (host_url, secret
     # name/value) is likewise excluded: it propagates through the shared ModelProviderInfo
-    # reference the entity map holds, not via rebuild. As a cold-start guard we always
-    # rebuild when the entity map is empty while providers exist.
+    # reference the entity map holds, not via rebuild. Cold start is covered by the initial
+    # signature being None (the first cycle always rebuilds), so an empty entity map with an
+    # unchanged signature is a valid steady state (providers with no/empty served_models, or
+    # only malformed ids) and is correctly skipped rather than rebuilt every cycle.
     entity_map_signature = frozenset(
         (
             mp.workspace,
@@ -325,8 +330,7 @@ async def refresh_model_cache(
         )
         for mp in model_providers
     )
-    map_is_empty_but_providers_exist = not model_cache.model_entity_info_map and bool(model_providers)
-    if entity_map_signature != model_cache._entity_map_signature or map_is_empty_but_providers_exist:
+    if entity_map_signature != model_cache._entity_map_signature:
         model_cache.rebuild_model_entity_map()
         model_cache._entity_map_signature = entity_map_signature
     else:
