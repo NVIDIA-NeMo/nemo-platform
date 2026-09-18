@@ -704,3 +704,61 @@ async def test_inline_lora_enabled_false_is_rejected_at_compile(
 
     with pytest.raises(PlatformJobCompilationError, match="lora_enabled must be true"):
         await platform_job_config_compiler(_lora_job(DeploymentParams(lora_enabled=False)), "default", platform_clients)
+
+
+class TestLoraModuleFilters:
+    """target_modules / exclude_modules reach Automodel's PeftConfig, which takes one or the other."""
+
+    @staticmethod
+    def _model_entity(checkpoint_model_name: str | None = None) -> Mock:
+        me = Mock()
+        me.spec = (
+            Mock(checkpoint_model_name=checkpoint_model_name, linear_layers=None) if checkpoint_model_name else None
+        )
+        return me
+
+    def test_exclude_modules_alone_is_not_overwritten_by_the_default(self) -> None:
+        """The backfill used to fire here, sending both filters and failing at training time."""
+        from nmp.automodel.app.jobs.training.compiler import _translate_lora_config
+
+        lora = _translate_lora_config(LoRAParams(exclude_modules=["*.out_proj"]), self._model_entity())
+
+        assert lora.exclude_modules == ["*.out_proj"]
+        assert not lora.target_modules
+
+    def test_nemotron_h_exclude_modules_alone_skips_the_derived_target_list(self) -> None:
+        from nmp.automodel.app.jobs.training.compiler import _translate_lora_config
+
+        lora = _translate_lora_config(
+            LoRAParams(exclude_modules=["*.out_proj"]), self._model_entity("NemotronHForCausalLM")
+        )
+
+        assert lora.exclude_modules == ["*.out_proj"]
+        assert not lora.target_modules
+
+    @pytest.mark.parametrize(
+        ("checkpoint_model_name", "expected"),
+        [(None, ["*proj"]), ("NemotronHForCausalLM", ["*proj"])],
+    )
+    def test_neither_filter_still_backfills_target_modules(
+        self, checkpoint_model_name: str | None, expected: list[str]
+    ) -> None:
+        """PeftConfig needs at least one filter, so the default still applies when both are absent."""
+        from nmp.automodel.app.jobs.training.compiler import _translate_lora_config
+
+        lora = _translate_lora_config(LoRAParams(), self._model_entity(checkpoint_model_name))
+
+        assert lora.target_modules == expected
+        assert not lora.exclude_modules
+
+    def test_target_modules_alone_is_preserved(self) -> None:
+        from nmp.automodel.app.jobs.training.compiler import _translate_lora_config
+
+        lora = _translate_lora_config(LoRAParams(target_modules=["*.q_proj"]), self._model_entity())
+
+        assert lora.target_modules == ["*.q_proj"]
+        assert not lora.exclude_modules
+
+    def test_both_filters_are_rejected_at_the_api_boundary(self) -> None:
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            LoRAParams(target_modules=["*.q_proj"], exclude_modules=["*.out_proj"])

@@ -102,6 +102,22 @@ def compile_automodel_config(
     return _compile_llm_config(customizer_config, workspace_dir, job_ctx, recipe)
 
 
+_BACKEND_CONFIG_TARGET = "nemo_automodel.components.models.common.utils.BackendConfig"
+
+
+def _explicit_backend_settings(customizer_config: TrainingStepConfig) -> dict[str, Any]:
+    """The backend fields the caller actually set.
+
+    Automodel's own BackendConfig defaults depend on what the node provides (Transformer
+    Engine, DeepEP, CUDA), so emitting our own value for an unset field would override a
+    hardware-aware choice with a blind one.
+    """
+    backend = customizer_config.training.backend
+    if backend is None:
+        return {}
+    return {key: value for key, value in backend.model_dump(mode="python").items() if value is not None}
+
+
 def _compile_retrieval_config(
     customizer_config: TrainingStepConfig,
     workspace_dir: Path,
@@ -161,7 +177,9 @@ def _compile_retrieval_config(
     _build_distributed(
         cfg,
         customizer_config,
-        activation_checkpointing=retrieval_config.do_gradient_checkpointing,
+        activation_checkpointing=(
+            retrieval_config.do_gradient_checkpointing or customizer_config.training.activation_checkpointing
+        ),
     )
 
     prepared = _prepare_and_validate_dataset(customizer_config, workspace_dir)
@@ -222,7 +240,11 @@ def _compile_llm_config(
         }
     )
 
-    _build_distributed(cfg, customizer_config)
+    _build_distributed(
+        cfg,
+        customizer_config,
+        activation_checkpointing=customizer_config.training.activation_checkpointing,
+    )
 
     prepared = _prepare_and_validate_dataset(customizer_config, workspace_dir)
 
@@ -249,7 +271,7 @@ def _compile_llm_config(
     cfg["dataloader"] = {
         "_target_": "torchdata.stateful_dataloader.StatefulDataLoader",
         "collate_fn": "nemo_automodel.components.datasets.utils.default_collater",
-        "shuffle": True,
+        "shuffle": customizer_config.dataset.shuffle,
     }
     cfg["validation_dataloader"] = {
         "_target_": "torchdata.stateful_dataloader.StatefulDataLoader",
@@ -300,6 +322,16 @@ def _build_base_model(cfg: dict[str, Any], customizer_config: TrainingStepConfig
     }
     if customizer_config.model.override_custom_impl:
         cfg["model"]["force_hf"] = True
+    mtp = customizer_config.training.mtp
+    if mtp is not None:
+        # Automodel reads these off the model block; a checkpoint without MTP heads
+        # ignores them, so they are only emitted when the caller asked for MTP.
+        cfg["model"]["num_nextn_predict_layers"] = mtp.num_nextn_predict_layers
+        cfg["model"]["mtp_use_repeated_layer"] = mtp.use_repeated_layer
+        cfg["model"]["mtp_loss_scaling_factor"] = mtp.loss_scaling_factor
+    backend = _explicit_backend_settings(customizer_config)
+    if backend:
+        cfg["model"]["backend"] = {"_target_": _BACKEND_CONFIG_TARGET, **backend}
 
 
 def _build_distributed(
@@ -329,11 +361,14 @@ def _build_distributed(
     if activation_checkpointing:
         cfg["distributed"]["activation_checkpointing"] = True
     if p.pipeline_parallel_size > 1:
-        cfg["distributed"]["pipeline"] = {
+        pipeline: dict[str, Any] = {
             "pp_schedule": "interleaved1f1b",
             "pp_microbatch_size": 1,
             "scale_grads_in_schedule": False,
         }
+        if p.pipeline is not None:
+            pipeline.update({k: v for k, v in p.pipeline.model_dump(mode="python").items() if v is not None})
+        cfg["distributed"]["pipeline"] = pipeline
 
 
 def _prepare_and_validate_dataset(
@@ -377,6 +412,14 @@ def _configure_sequence_packing(
     """
     if not customizer_config.batch.sequence_packing:
         return customizer_config.model.max_seq_length, None
+
+    explicit_pack_size = customizer_config.batch.packed_sequence_size
+    if explicit_pack_size is not None:
+        # The caller pinned the length, so skip the sampling pass entirely. packing_factor
+        # stays None, which the schedule reads as "do not rescale the step count".
+        logger.info(f"Sequence packing enabled with caller-supplied pack_size={explicit_pack_size}")
+        cfg["packed_sequence"] = {"packed_sequence_size": explicit_pack_size}
+        return explicit_pack_size, None
 
     packing_estimate = estimate_dataset_sequence_lengths(
         customizer_config,
@@ -551,10 +594,15 @@ def _build_peft(cfg: dict[str, Any], customizer_config: TrainingStepConfig) -> N
         "alpha": lora.alpha,
         "dropout": lora.dropout,
         "use_triton": lora.use_triton,
-        "target_modules": lora.target_modules,
     }
+    # Mutually exclusive in Automodel's PeftConfig, and the compiler guarantees at most
+    # one is populated.
+    if lora.target_modules:
+        peft_cfg["target_modules"] = lora.target_modules
     if lora.exclude_modules:
         peft_cfg["exclude_modules"] = lora.exclude_modules
+    if lora.use_memory_efficient_lora:
+        peft_cfg["use_memory_efficient_lora"] = True
     cfg["peft"] = peft_cfg
 
 
@@ -681,11 +729,14 @@ def _configure_moe_backend(
                             f"is {ep or 'not set'}. Multi-GPU MoE training requires expert_parallel_size > 1."
                         )
 
-                # Backend configuration for MoE models
-                # DeepEP is disabled for stability - it's a newer feature that can cause issues
-                cfg.setdefault("model", {})["backend"] = {
-                    "_target_": "nemo_automodel.components.models.common.utils.BackendConfig",
+                # Backend configuration for MoE models. DeepEP is disabled by default for
+                # stability, but anything the job spec asked for explicitly wins -- this runs
+                # after _build_base_model, which already wrote the requested settings.
+                requested = cfg.setdefault("model", {}).get("backend", {})
+                cfg["model"]["backend"] = {
+                    "_target_": _BACKEND_CONFIG_TARGET,
                     "enable_deepep": False,
+                    **{k: v for k, v in requested.items() if k != "_target_"},
                 }
 
             else:

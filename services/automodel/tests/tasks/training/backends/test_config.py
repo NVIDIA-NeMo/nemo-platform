@@ -709,3 +709,57 @@ def test_optimizer_selection_is_explicit_after_auto_resolution(
     config.optimizer.optimizer_name = optimizer_name
 
     assert _resolve_optimizer_target(config, recipe) == expected_target
+
+
+class TestBackendSettings:
+    """`training.backend` is typed, and only explicitly set fields reach the recipe."""
+
+    @staticmethod
+    def _explicit(backend: Any) -> dict[str, Any]:
+        from nmp.automodel.tasks.training.backends.config import _explicit_backend_settings
+
+        cfg = MagicMock()
+        cfg.training.backend = backend
+        return _explicit_backend_settings(cfg)
+
+    def test_unset_fields_are_not_forwarded(self) -> None:
+        """Automodel picks backend defaults from the node's hardware; ours would override blindly."""
+        from nmp.automodel.app.jobs.training.schemas import BackendConfig
+
+        explicit = self._explicit(BackendConfig(experts="gmm"))
+
+        assert explicit == {"experts": "gmm"}
+
+    def test_no_backend_block_yields_nothing(self) -> None:
+        assert self._explicit(None) == {}
+
+    def test_false_is_forwarded_but_none_is_not(self) -> None:
+        """False is a deliberate choice; only None means "unset"."""
+        from nmp.automodel.app.jobs.training.schemas import BackendConfig
+
+        explicit = self._explicit(BackendConfig(rope_fusion=False))
+
+        assert explicit == {"rope_fusion": False}
+
+
+class TestMoeBackendRespectsRequestedSettings:
+    """The MoE auto-config runs after the job spec's own backend settings are written."""
+
+    def test_requested_keys_survive_the_moe_default(self) -> None:
+        requested = {
+            "_target_": "nemo_automodel.components.models.common.utils.BackendConfig",
+            "enable_deepep": True,
+            "experts": "gmm",
+        }
+        cfg: dict[str, Any] = {"model": {"backend": requested}}
+
+        # Mirrors _configure_moe_backend's merge: its default sits under the request.
+        existing = cfg.setdefault("model", {}).get("backend", {})
+        merged = {
+            "_target_": "nemo_automodel.components.models.common.utils.BackendConfig",
+            "enable_deepep": False,
+            **{k: v for k, v in existing.items() if k != "_target_"},
+        }
+
+        assert merged["enable_deepep"] is True
+        assert merged["experts"] == "gmm"
