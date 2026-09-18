@@ -48,9 +48,18 @@ def qualified_task_refs(refs: list[TaskRef], workspace: str) -> list[TaskRef]:
 
 
 class PinnedHarborTaskset(BaseModel):
+    """Canonical job source pointing to an existing Taskset revision.
+
+    This is a deferred job input, not another stored taskset schema. The worker
+    resolves its pinned members and materializes their Harbor archives locally.
+    """
+
     model_config = ConfigDict(extra="forbid")
     kind: Literal["harbor-taskset"] = "harbor-taskset"
-    taskset_ref: TasksetRef
+    taskset_ref: TasksetRef = Field(
+        description="Existing taskset revision in workspace/name#<sha256-digest> form. "
+        "The reference must be qualified and digest-pinned; mutable tags are not accepted."
+    )
 
     @field_validator("taskset_ref")
     @classmethod
@@ -60,9 +69,19 @@ class PinnedHarborTaskset(BaseModel):
 
 
 class PinnedHarborTaskList(BaseModel):
+    """Canonical job source selecting exact task revisions without creating a taskset.
+
+    The worker resolves these references and materializes their Harbor archives
+    locally, preserving the requested task order.
+    """
+
     model_config = ConfigDict(extra="forbid")
     kind: Literal["harbor-task-list"] = "harbor-task-list"
-    task_refs: list[TaskRef] = Field(min_length=1)
+    task_refs: list[TaskRef] = Field(
+        min_length=1,
+        description="Task revisions in execution order, each in workspace/name#<sha256-digest> form. "
+        "References must be qualified and digest-pinned; mutable tags and repeated task identities are not accepted.",
+    )
 
     @field_validator("task_refs")
     @classmethod

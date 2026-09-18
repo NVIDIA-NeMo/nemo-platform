@@ -85,8 +85,7 @@ async def resolve_taskset_ref(
     """
     if entity_client is None:
         raise ValueError(
-            "A TasksetRef requires a platform connection (entity store) to resolve; it cannot be used "
-            "in local execution. Pass an inline task list instead."
+            "A TasksetRef requires a platform connection (entity store) to resolve; pass an inline task list instead."
         )
     task_store = cast(EntityClientProtocol[TaskEntity], entity_client)
     revision_store = cast(EntityClientProtocol[TaskRevisionEntity], entity_client)
@@ -148,14 +147,21 @@ async def resolve_taskset_ref(
     return tasks
 
 
-async def resolve_agent_eval_tasks(
+async def canonicalize_agent_eval_tasks(
     tasks: TasksetRef | Sequence[AgentEvalTaskInput] | Sequence[TaskRef],
     *,
     workspace: str,
     entity_client: TasksetStoreProtocol | None,
     target: Target | None = None,
 ) -> list[AgentEvalTaskInput] | PinnedHarborSource:
-    """Expand evaluator inputs or pin stored Harbor sources for worker preparation."""
+    """Canonicalize task selectors without materializing Harbor archives.
+
+    For a Harbor target, a taskset reference becomes a ``PinnedHarborTaskset``
+    and direct task references become a ``PinnedHarborTaskList``. Both retain
+    exact revisions for worker preparation. Other supported inputs return a list
+    of ``AgentEvalTaskInput``: inline tasks pass through and stored evaluator
+    references expand into their task definitions.
+    """
     if isinstance(tasks, TasksetRef) and isinstance(target, HarborRunnerTarget):
         if entity_client is None:
             raise ValueError("A TasksetRef requires a platform connection (entity store)")

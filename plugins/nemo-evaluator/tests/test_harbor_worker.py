@@ -17,7 +17,7 @@ from nemo_evaluator.api.task_definitions.harbor import HarborArchiveSource, Harb
 from nemo_evaluator.entities import TaskEntity, TaskRevisionEntity
 from nemo_evaluator.harbor.archive import pack_task
 from nemo_evaluator.harbor.tasks import PinnedHarborTaskList
-from nemo_evaluator.jobs.agent_evaluate import AgentEvalJob
+from nemo_evaluator.jobs.agent_evaluate import AgentEvalJob, AsyncAgentEvalJob
 from nemo_evaluator.revisions import publish_revision
 from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import HarborRewardMetric
 from nemo_evaluator_sdk.execution.metric_execution import run_sync
@@ -108,11 +108,8 @@ def stored_packages(tmp_path, entity_store):
     return PinnedHarborTaskList(task_refs=refs), handler, requests
 
 
-@pytest.mark.parametrize("transport", ["sync", "async", "both"])
-@pytest.mark.parametrize("generated_sdk", [False, True])
-def test_worker_passes_verified_ordered_tasks_to_public_evaluator(
-    tmp_path, stored_packages, monkeypatch, transport, generated_sdk
-):
+@pytest.mark.parametrize("transport", ["sync", "async"])
+def test_worker_passes_verified_ordered_tasks_to_public_evaluator(tmp_path, stored_packages, monkeypatch, transport):
     source, handler, requests = stored_packages
     sync_http = httpx.Client(transport=httpx.MockTransport(handler))
     async_http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
@@ -123,19 +120,8 @@ def test_worker_passes_verified_ordered_tasks_to_public_evaluator(
     async_sdk = AsyncNemoClient(
         http_client=async_http, base_url="http://platform.test", workspace="default", default_headers=headers
     )
-    if generated_sdk:
-        from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-
-        sdk = NeMoPlatform(
-            http_client=sync_http, base_url="http://platform.test", workspace="default", default_headers=headers
-        )
-        async_sdk = AsyncNeMoPlatform(
-            http_client=async_http, base_url="http://platform.test", workspace="default", default_headers=headers
-        )
     # Isolate onto a real async transport that records requests, as the worker normally does.
-    monkeypatch.setattr("nemo_evaluator.jobs.utils.httpx", SimpleNamespace(AsyncClient=lambda: async_http))
-    if transport == "both":
-        sync_http.close()  # Selecting sync when both are supplied now fails.
+    monkeypatch.setattr("nemo_evaluator.jobs.utils.httpx", SimpleNamespace(AsyncClient=lambda **_: async_http))
     ctx = JobContext(
         workspace="default",
         job_id="bridge",
@@ -143,16 +129,16 @@ def test_worker_passes_verified_ordered_tasks_to_public_evaluator(
         results=LocalJobResults(root=tmp_path / "results"),
     )
     evaluator = MagicMock()
-    monkeypatch.setattr(AgentEvalJob, "_build_evaluator", lambda *args: evaluator)
     # Stop after the public run boundary; persistence is covered by the existing worker tests.
     evaluator.run_sync.side_effect = RuntimeError("captured public evaluator")
+    config = {"tasks": source.model_dump(mode="json"), "target": {"kind": "harbor"}}
     with pytest.raises(RuntimeError, match="captured public evaluator"):
-        AgentEvalJob().run(
-            {"tasks": source.model_dump(mode="json"), "target": {"kind": "harbor"}},
-            ctx=ctx,
-            sdk=sdk if transport != "async" else None,
-            async_sdk=async_sdk if transport != "sync" else None,
-        )
+        if transport == "sync":
+            monkeypatch.setattr(AgentEvalJob, "_build_evaluator", lambda *args: evaluator)
+            AgentEvalJob().run(config, ctx=ctx, client=sdk)
+        else:
+            monkeypatch.setattr(AsyncAgentEvalJob, "_build_evaluator", lambda *args: evaluator)
+            AsyncAgentEvalJob().run(config, ctx=ctx, async_client=async_sdk)
     tasks = evaluator.run_sync.call_args.kwargs["tasks"]
     assert [task.id for task in tasks] == ["commerce/checkout", "commerce/search"]
     assert [Path(task.metadata["harbor_task_dir"]).name for task in tasks] == ["z-folder", "a-folder"]

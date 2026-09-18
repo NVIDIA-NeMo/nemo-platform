@@ -21,7 +21,7 @@ import nemo_evaluator.shared.metric_bundles.inline  # noqa: F401
 from filesets import FilesetPathError, parse_fileset_ref
 from nemo_evaluator.api.schemas import MetricInline, TaskInputs, TaskMetadataList, TaskRef, TasksetRef
 from nemo_evaluator.filesets import FilesetRef
-from nemo_evaluator.harbor.tasks import PinnedHarborSource
+from nemo_evaluator.harbor.tasks import PinnedHarborSource, PinnedHarborTaskList, PinnedHarborTaskset
 from nemo_evaluator.jobs.metric_resolution import to_runtime_bundle, unresolved_model_refs
 from nemo_evaluator.jobs.publication_spec import PublicationSpec
 from nemo_evaluator.metric_refs import MetricRefOrInline
@@ -440,17 +440,23 @@ class AgentEvalInputSpec(_AgentEvalSpecCommon):
 class AgentEvalSpec(_AgentEvalSpecCommon):
     """Canonical evaluation: resolved evaluator tasks or an immutable stored Harbor source."""
 
-    tasks: Annotated[list[AgentEvalTaskSpec], Field(min_length=1)] | PinnedHarborSource
+    tasks: Annotated[list[AgentEvalTaskSpec], Field(min_length=1)] | PinnedHarborSource = Field(
+        description="Resolved inline tasks, or immutable stored Harbor references whose archives are materialized "
+        "on the executing worker. Stored sources select an existing taskset revision or explicit task revisions "
+        "and require a Harbor target; they do not define another stored taskset entity."
+    )
 
     @model_validator(mode="after")
     def _require_harbor_source_target(self) -> Self:
-        if not isinstance(self.tasks, list) and not isinstance(self.target, HarborRunnerTarget):
+        if isinstance(self.tasks, (PinnedHarborTaskset, PinnedHarborTaskList)) and not isinstance(
+            self.target, HarborRunnerTarget
+        ):
             raise ValueError("Stored Harbor sources require a Harbor target and cannot use offline trials")
         return self
 
     @model_validator(mode="after")
     def _reject_unresolved_metric_model_refs(self) -> Self:
-        if not isinstance(self.tasks, list):
+        if isinstance(self.tasks, (PinnedHarborTaskset, PinnedHarborTaskList)):
             return self
         for task in self.tasks:
             unresolved = unresolved_model_refs([unbundle_metric(to_runtime_bundle(metric)) for metric in task.metrics])

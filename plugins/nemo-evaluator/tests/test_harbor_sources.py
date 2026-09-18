@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+from typing import cast
+
 import pytest
 from nemo_evaluator.jobs.agent_spec import AgentEvalInputSpec, AgentEvalSpec
 from pydantic import ValidationError
@@ -19,11 +21,15 @@ def test_pinned_sources_round_trip_without_definitions():
 
 
 @pytest.mark.parametrize("ref", ["suite", "suite#latest", f"suite#{DIGEST}", "default/suite#blessed"])
-def test_canonical_taskset_requires_qualified_digest(ref):
+@pytest.mark.parametrize("source_kind", ["harbor-taskset", "harbor-task-list"])
+def test_canonical_source_requires_qualified_digest(ref, source_kind):
+    source = (
+        {"kind": source_kind, "taskset_ref": ref}
+        if source_kind == "harbor-taskset"
+        else {"kind": source_kind, "task_refs": [ref]}
+    )
     with pytest.raises(ValidationError):
-        AgentEvalSpec.model_validate(
-            {"tasks": {"kind": "harbor-taskset", "taskset_ref": ref}, "target": {"kind": "harbor"}}
-        )
+        AgentEvalSpec.model_validate({"tasks": source, "target": {"kind": "harbor"}})
 
 
 def test_direct_refs_are_public_inputs():
@@ -48,7 +54,8 @@ def test_canonical_source_rejects_duplicate_identity_and_nonharbor_target():
 
 
 def test_worker_without_clients_fails_before_allocating_inputs(tmp_path):
-    from nemo_evaluator.jobs.agent_evaluate import AgentEvalJob
+    from nemo_evaluator.jobs.agent_evaluate import AsyncAgentEvalJob
+    from nemo_platform_plugin.client.client import AsyncNemoClient
     from nemo_platform_plugin.job_context import JobContext, StoragePaths
     from nemo_platform_plugin.job_results import LocalJobResults
 
@@ -62,12 +69,13 @@ def test_worker_without_clients_fails_before_allocating_inputs(tmp_path):
         results=LocalJobResults(root=tmp_path / "results"),
     )
     with pytest.raises(ValueError, match="authenticated platform client"):
-        AgentEvalJob().run(
+        AsyncAgentEvalJob().run(
             {
                 "tasks": {"kind": "harbor-taskset", "taskset_ref": f"default/suite#{DIGEST}"},
                 "target": {"kind": "harbor"},
             },
             ctx=ctx,
+            async_client=cast(AsyncNemoClient, None),
         )
     assert not (tmp_path / "persistent" / "harbor-inputs").exists()
 
@@ -152,7 +160,7 @@ async def test_resolver_rejects_mixed_lists_before_entity_access(target_kind, re
 
     from nemo_evaluator.api.schemas import TaskRef
     from nemo_evaluator.jobs.agent_spec import AgentEvalTaskInput, FabricRunnerTarget, HarborRunnerTarget
-    from nemo_evaluator.task_refs import resolve_agent_eval_tasks
+    from nemo_evaluator.task_refs import canonicalize_agent_eval_tasks
 
     target = {"offline": None, "harbor": HarborRunnerTarget(), "fabric": FabricRunnerTarget(config={})}[target_kind]
     tasks = [AgentEvalTaskInput(id="task", intent="Do task"), TaskRef("default/task")]
@@ -160,5 +168,5 @@ async def test_resolver_rejects_mixed_lists_before_entity_access(target_kind, re
         tasks.reverse()
     client = Mock()
     with pytest.raises(ValueError, match="Cannot mix inline tasks and stored task references"):
-        await resolve_agent_eval_tasks(tasks, workspace="default", entity_client=client, target=target)  # ty: ignore[invalid-argument-type]
+        await canonicalize_agent_eval_tasks(tasks, workspace="default", entity_client=client, target=target)  # ty: ignore[invalid-argument-type]
     assert client.mock_calls == []

@@ -25,14 +25,19 @@ from nemo_evaluator.jobs.agent_spec import AgentEvalSpec, AgentEvalTaskInput
 from nemo_evaluator.revisions import apply_tag, get_revision, head_digest, is_digest, publish_revision
 from nemo_evaluator.task_refs import (
     UnsupportedTaskKindError,
-    resolve_agent_eval_tasks,
+    canonicalize_agent_eval_tasks,
     resolve_taskset_ref,
 )
 from nemo_platform_plugin.entities import EntityBase, SyncEntityClient
 from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
+from nemo_platform_plugin.sdk import AsyncNeMoPlatform
 from pydantic import ValidationError
 
 _EntityT = TypeVar("_EntityT", bound=EntityBase)
+
+
+def _async_platform() -> AsyncNeMoPlatform:
+    return AsyncNeMoPlatform(base_url="http://platform.test", workspace="default")
 
 
 def _task(name: str, *, workspace: str = "default", metric: str = "default/m") -> TaskEntity:
@@ -63,7 +68,7 @@ async def test_harbor_suite_submission_defers_missing_member_resolution(entity_s
     from nemo_evaluator.jobs.agent_spec import HarborRunnerTarget
 
     client = await _store(entity_store, _taskset("suite", [f"default/missing#{_ABSENT_MEMBER_DIGEST}"]))
-    source = await resolve_agent_eval_tasks(
+    source = await canonicalize_agent_eval_tasks(
         TasksetRef("default/suite"), workspace="default", entity_client=client, target=HarborRunnerTarget()
     )
     assert isinstance(source, PinnedHarborTaskset)
@@ -89,7 +94,7 @@ async def test_harbor_direct_list_pins_and_worker_resolves_selected_revision(ent
         ),
     )
     await _store(entity_store, task)
-    source = await resolve_agent_eval_tasks(
+    source = await canonicalize_agent_eval_tasks(
         [TaskRef("checkout")], workspace="default", entity_client=entity_store, target=HarborRunnerTarget()
     )
     assert isinstance(source, PinnedHarborTaskList)
@@ -106,7 +111,7 @@ async def test_direct_alias_duplicates_fail_without_entity_client():
     from nemo_evaluator.jobs.agent_spec import HarborRunnerTarget
 
     with pytest.raises(ValueError, match="Duplicate task identity"):
-        await resolve_agent_eval_tasks(
+        await canonicalize_agent_eval_tasks(
             [TaskRef("checkout"), TaskRef("default/checkout#blessed")],
             workspace="default",
             entity_client=None,
@@ -201,7 +206,7 @@ async def test_worker_rejects_incompatible_suite_member_and_deleted_revision(ent
 
     task = _task("wrong-kind")
     await _store(entity_store, task, _taskset("suite", ["default/wrong-kind"]))
-    source = await resolve_agent_eval_tasks(
+    source = await canonicalize_agent_eval_tasks(
         TasksetRef("suite"), workspace="default", entity_client=entity_store, target=HarborRunnerTarget()
     )
     assert isinstance(source, PinnedHarborTaskset)
@@ -230,7 +235,7 @@ async def test_sync_worker_resolves_same_exact_pins(entity_store):
         ),
     )
     await _store(entity_store, task, _taskset("suite", ["default/checkout"]))
-    source = await resolve_agent_eval_tasks(
+    source = await canonicalize_agent_eval_tasks(
         TasksetRef("suite"), workspace="default", entity_client=entity_store, target=HarborRunnerTarget()
     )
 
@@ -402,15 +407,15 @@ async def test_taskset_ref_requires_entity_client(entity_store) -> None:
         await resolve_taskset_ref(TasksetRef("default/geo"), workspace="default", entity_client=None)
 
 
-async def test_resolve_agent_eval_tasks_passes_inline_list_through(entity_store) -> None:
+async def test_canonicalize_agent_eval_tasks_passes_inline_list_through(entity_store) -> None:
     inline = [AgentEvalTaskInput(id="t", intent="x", metrics=[])]
-    result = await resolve_agent_eval_tasks(inline, workspace="default", entity_client=None)
+    result = await canonicalize_agent_eval_tasks(inline, workspace="default", entity_client=None)
     assert result is inline
 
 
-async def test_resolve_agent_eval_tasks_expands_a_taskset_ref(entity_store) -> None:
+async def test_canonicalize_agent_eval_tasks_expands_a_taskset_ref(entity_store) -> None:
     client = await _store(entity_store, _task("only"), _taskset("geo", ["default/only"]))
-    result = await resolve_agent_eval_tasks(TasksetRef("default/geo"), workspace="default", entity_client=client)
+    result = await canonicalize_agent_eval_tasks(TasksetRef("default/geo"), workspace="default", entity_client=client)
     assert isinstance(result, list)
     assert [t.id for t in result] == ["only"]
 
@@ -604,7 +609,7 @@ async def test_incompatible_target_error_names_requested_target(entity_store):
     )
     await _store(entity_store, task)
     with pytest.raises(UnsupportedTaskKindError, match="target 'fabric'"):
-        await resolve_agent_eval_tasks(
+        await canonicalize_agent_eval_tasks(
             [TaskRef("checkout")], workspace="default", entity_client=entity_store, target=FabricRunnerTarget(config={})
         )
 
@@ -680,7 +685,7 @@ async def test_direct_evaluator_references_resolve_and_compile(kind, entity_stor
         trials=[] if target is None else None,
     )
     spec = await AgentEvalJob.to_spec(
-        request, workspace="default", entity_client=entity_store, async_sdk=None, is_local=False
+        request, workspace="default", entity_client=entity_store, async_sdk=_async_platform(), is_local=False
     )
     assert isinstance(spec, AgentEvalSpec) and isinstance(spec.tasks, list)
     assert [task.id for task in spec.tasks] == ["third", "second", "first"]
@@ -694,8 +699,22 @@ async def test_direct_evaluator_references_resolve_and_compile(kind, entity_stor
         assert runtime.reference == {"answer": "DONE"}
         assert runtime.views == task.views
         assert len(runtime.metrics) == 1
+    if kind == "gym":
+        from types import SimpleNamespace
+
+        class Jobs:
+            async def get_execution_profiles(self):
+                return SimpleNamespace(data=lambda: [])
+
+        monkeypatch.setattr("nemo_evaluator.jobs.agent_evaluate.client_from_platform", lambda *_: Jobs())
     compiled = PlatformJobSpec.model_validate(
-        await AgentEvalJob.compile(workspace="default", spec=spec, entity_client=None, job_name=None, async_sdk=None)
+        await AgentEvalJob.compile(
+            workspace="default",
+            spec=spec,
+            entity_client=None,
+            job_name=None,
+            async_sdk=_async_platform(),
+        )
     )
     assert compiled.steps[0].config["tasks"] == spec.model_dump(mode="json")["tasks"]
     if kind in {"model", "agent"}:
@@ -832,7 +851,7 @@ async def test_direct_evaluator_refs_reject_cross_workspace_id_collision(entity_
     tasks = [_task("same", workspace=workspace) for workspace in ["default", "other"]]
     await _store(entity_store, *tasks)
     with pytest.raises(ValueError, match="task ids must be unique"):
-        await resolve_agent_eval_tasks(
+        await canonicalize_agent_eval_tasks(
             [TaskRef("default/same"), TaskRef("other/same")], workspace="default", entity_client=entity_store
         )
 
@@ -862,6 +881,6 @@ async def test_direct_reference_failures_for_every_evaluator_target(kind, failur
         refs = [TaskRef("harbor")]
         match = "stored kind 'harbor'"
     with pytest.raises(NemoEntityNotFoundError if failure == "missing" else ValueError, match=match):
-        await resolve_agent_eval_tasks(
+        await canonicalize_agent_eval_tasks(
             refs, workspace="default", entity_client=entity_store, target=_direct_target(kind)
         )

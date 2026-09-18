@@ -13,7 +13,7 @@ from nemo_evaluator.api.schemas import TaskInput
 from nemo_evaluator.api.service.task_service import TaskService
 from nemo_evaluator.api.task_definitions.harbor import HarborArchiveSource, HarborTaskDefinition, HarborTaskHash
 from nemo_evaluator.harbor.publication import publish_harbor_task_archive
-from nemo_evaluator.sdk.harbor import upload_harbor_dataset
+from nemo_evaluator.sdk.harbor import upload_harbor_dataset, upload_harbor_task
 from nemo_platform_plugin.client.errors import NemoHTTPError
 
 pytest.importorskip("harbor")
@@ -98,14 +98,24 @@ def test_publication_rejects_corrupted_readback(root, files):
         publish_harbor_task_archive(root, files_client=client, fileset_ref="default/harbor-tasks")
 
 
-def test_upload_only_has_no_entity_calls(root, files, monkeypatch):
+@pytest.mark.parametrize("dataset", [False, True])
+def test_upload_only_has_no_entity_calls(root, files, monkeypatch, dataset):
     client, objects = files
     monkeypatch.setattr("nemo_evaluator.sdk.harbor.FilesClient.from_client", lambda _: client)
     monkeypatch.setattr("nemo_evaluator.sdk.harbor.EvaluatorClient.from_client", lambda _: pytest.fail("No DB calls"))
-    receipt = upload_harbor_dataset(root, client=Mock(), register=False)
-    assert len(receipt.members) == 1
-    assert receipt.taskset_ref is None and receipt.members[0].task_ref is None
-    assert next(iter(objects)).startswith("task/task/")
+    if dataset:
+        receipt = upload_harbor_dataset(root, client=Mock(), register=False)
+        assert len(receipt.members) == 1
+        assert receipt.taskset_ref is None
+        member = receipt.members[0]
+        fileset_name, prefix = "harbor-tasksets", "task/task/"
+    else:
+        member = upload_harbor_task(root, client=Mock(), register=False)
+        fileset_name, prefix = "harbor-tasks", "task/"
+    assert member.task_ref is None and member.task_name == root.name
+    assert member.native_name == root.name
+    assert next(iter(objects)).startswith(prefix)
+    assert member.definition.source.fileset_ref.startswith(f"default/{fileset_name}#{prefix}")
 
 
 def test_upload_only_preserves_mapped_registration_name(root, files, monkeypatch):
@@ -127,8 +137,8 @@ def test_register_uploaded_dataset_creates_tasks_and_taskset(monkeypatch):
 
     from nemo_evaluator.api.schemas import Task, TaskRef, Taskset, TasksetInput
     from nemo_evaluator.sdk.harbor import (
-        HarborDatasetReceipt,
-        HarborUploadReceipt,
+        HarborDatasetUploadDetails,
+        HarborUploadDetails,
         _digest,
         register_harbor_dataset,
     )
@@ -175,8 +185,8 @@ def test_register_uploaded_dataset_creates_tasks_and_taskset(monkeypatch):
     monkeypatch.setattr(EvaluatorTasksetsResource, "list_revisions", Mock(return_value=page(taskset_digest)))
     monkeypatch.setattr("nemo_evaluator.sdk.harbor.EvaluatorClient.from_client", lambda _: Mock())
 
-    receipt = HarborDatasetReceipt(
-        members=[HarborUploadReceipt(native_name="task", task_name="renamed-task", definition=definition)]
+    receipt = HarborDatasetUploadDetails(
+        members=[HarborUploadDetails(native_name="task", task_name="renamed-task", definition=definition)]
     )
     result = register_harbor_dataset(receipt, client=Mock(), workspace="default", taskset_name="suite")
 
@@ -192,8 +202,8 @@ def test_register_uploaded_dataset_rehydrates_reused_taskset_members(monkeypatch
 
     from nemo_evaluator.api.schemas import Task, TaskRef, Taskset, TasksetInput
     from nemo_evaluator.sdk.harbor import (
-        HarborDatasetReceipt,
-        HarborUploadReceipt,
+        HarborDatasetUploadDetails,
+        HarborUploadDetails,
         _digest,
         register_harbor_dataset,
     )
@@ -261,8 +271,8 @@ def test_register_uploaded_dataset_rehydrates_reused_taskset_members(monkeypatch
     )
     monkeypatch.setattr("nemo_evaluator.sdk.harbor.EvaluatorClient.from_client", lambda _: Mock())
 
-    receipt = HarborDatasetReceipt(
-        members=[HarborUploadReceipt(native_name="local-task", task_name="local-task", definition=local_definition)]
+    receipt = HarborDatasetUploadDetails(
+        members=[HarborUploadDetails(native_name="local-task", task_name="local-task", definition=local_definition)]
     )
     result = register_harbor_dataset(receipt, client=Mock(), workspace="default", taskset_name="suite")
 
@@ -405,8 +415,8 @@ def test_member_failure_does_not_publish_partial_suite(root, files, monkeypatch)
     monkeypatch.setattr("nemo_evaluator.sdk.harbor.EvaluatorClient.from_client", lambda _: Mock())
     with pytest.raises(HarborUploadError) as caught:
         upload_harbor_dataset(root, client=Mock(), taskset_name="suite")
-    assert len(caught.value.receipt.members) == 1
-    assert caught.value.receipt.taskset_ref is None
+    assert len(caught.value.upload_details.members) == 1
+    assert caught.value.upload_details.taskset_ref is None
     assert len(objects) == 1
     assert register.call_count == 1
 
@@ -480,4 +490,5 @@ async def test_registration_root_does_not_collide_with_download(root, entity_sto
     )
     task, published = await service.create_task("stored", TaskInput(spec=definition), workspace="default")
     assert published
+    assert isinstance(task.spec, HarborTaskDefinition)
     assert task.spec.instruction == "Do it"

@@ -2735,6 +2735,10 @@ components:
                 harbor-task-list: '#/components/schemas/PinnedHarborTaskList'
                 harbor-taskset: '#/components/schemas/PinnedHarborTaskset'
           title: Tasks
+          description: Resolved inline tasks, or immutable stored Harbor references
+            whose archives are materialized on the executing worker. Stored sources
+            select an existing taskset revision or explicit task revisions and require
+            a Harbor target; they do not define another stored taskset entity.
       additionalProperties: false
       type: object
       required:
@@ -5211,11 +5215,21 @@ components:
           type: array
           minItems: 1
           title: Task Refs
+          description: Task revisions in execution order, each in workspace/name#<sha256-digest>
+            form. References must be qualified and digest-pinned; mutable tags and
+            repeated task identities are not accepted.
       additionalProperties: false
       type: object
       required:
       - task_refs
       title: PinnedHarborTaskList
+      description: 'Canonical job source selecting exact task revisions without creating
+        a taskset.
+
+
+        The worker resolves these references and materializes their Harbor archives
+
+        locally, preserving the requested task order.'
     PinnedHarborTaskset:
       properties:
         kind:
@@ -5224,12 +5238,22 @@ components:
           title: Kind
           default: harbor-taskset
         taskset_ref:
-          $ref: '#/components/schemas/TasksetRef'
+          allOf:
+          - $ref: '#/components/schemas/TasksetRef'
+          description: Existing taskset revision in workspace/name#<sha256-digest>
+            form. The reference must be qualified and digest-pinned; mutable tags
+            are not accepted.
       additionalProperties: false
       type: object
       required:
       - taskset_ref
       title: PinnedHarborTaskset
+      description: 'Canonical job source pointing to an existing Taskset revision.
+
+
+        This is a deferred job input, not another stored taskset schema. The worker
+
+        resolves its pinned members and materializes their Harbor archives locally.'
     PlatformJobListResultResponse:
       properties:
         data:
@@ -5607,6 +5631,13 @@ components:
           title: Batch Size
           description: Embedding HTTP batch size.
           default: 32
+        embedding_in_flight:
+          type: integer
+          minimum: 1.0
+          title: Embedding In Flight
+          description: Concurrent embedding POSTs to one NIM so the GPU is not idle
+            between batches.
+          default: 2
         embedding_dimensions:
           title: Embedding Dimensions
           description: Expected embedding width. Omit to accept the model's native
@@ -5654,6 +5685,13 @@ components:
           title: Batch Size
           description: Embedding HTTP batch size.
           default: 32
+        embedding_in_flight:
+          type: integer
+          minimum: 1.0
+          title: Embedding In Flight
+          description: Concurrent embedding POSTs to one NIM so the GPU is not idle
+            between batches.
+          default: 2
         embedding_dimensions:
           title: Embedding Dimensions
           description: Expected embedding width. Omit to accept the model's native

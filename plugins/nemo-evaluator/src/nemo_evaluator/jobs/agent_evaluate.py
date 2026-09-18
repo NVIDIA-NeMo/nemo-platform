@@ -21,14 +21,18 @@ import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, ClassVar, Literal, cast
+from typing import Any, ClassVar, Literal
 
 import nemo_evaluator.agent_seeds  # noqa: F401 - registers the platform 'fileset' workspace-seed handler
 from filesets import FilesetPathError, parse_fileset_ref
 from nemo_evaluator.api.schemas import MetricInline
 from nemo_evaluator.config import get_config
 from nemo_evaluator.filesets import FilesetRef
-from nemo_evaluator.jobs.agent_compiler import compile_agent_eval_job
+from nemo_evaluator.harbor.tasks import PinnedHarborTaskList, PinnedHarborTaskset
+from nemo_evaluator.jobs.agent_compiler import (
+    _compile_agent_eval_cpu_job,
+    compile_agent_eval_job,
+)
 from nemo_evaluator.jobs.agent_spec import (
     AgentEvalInputSpec,
     AgentEvalSpec,
@@ -56,9 +60,9 @@ from nemo_evaluator.jobs.gym_sandbox import (
 from nemo_evaluator.jobs.metric_resolution import resolve_metrics_to_inline, to_runtime_bundle
 from nemo_evaluator.jobs.publication import publish_agent_eval_result
 from nemo_evaluator.jobs.result_persistence import persist_agent_eval_result
-from nemo_evaluator.jobs.utils import as_async_nemo_client, as_nemo_client
+from nemo_evaluator.jobs.utils import async_client_from_sync_client
 from nemo_evaluator.shared.metric_bundles.bundles import unbundle_metric
-from nemo_evaluator.task_refs import resolve_agent_eval_tasks
+from nemo_evaluator.task_refs import canonicalize_agent_eval_tasks
 from nemo_evaluator_sdk.agent_eval.evaluator import AgentEvaluator
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric.runtime import FabricAgentRuntime
@@ -84,7 +88,11 @@ from nemo_platform_plugin.files.types import FilesetPurpose
 from nemo_platform_plugin.intake.client import AsyncIntakeClient
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
-from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec, SubprocessExecutionProviderSpec
+from nemo_platform_plugin.jobs.api_factory import (
+    CPUExecutionProviderSpec,
+    PlatformJobSpec,
+    SubprocessExecutionProviderSpec,
+)
 from nemo_platform_plugin.jobs.client import AsyncJobsClient
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError, PlatformJobDependencyUnavailableError
 from nemo_platform_plugin.jobs.execution_profiles import (
@@ -93,7 +101,7 @@ from nemo_platform_plugin.jobs.execution_profiles import (
     VolcanoJobExecutionProfile,
 )
 from nemo_platform_plugin.jobs.spec import BaseExecutionProfile
-from nemo_platform_plugin.sdk import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.sdk import AsyncNeMoPlatform
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -106,7 +114,7 @@ SUMMARY_FILE_NAME = "summary.json"
 
 # Shared tail for every Harbor backend-compatibility rejection
 _HARBOR_BACKEND_REQUIREMENT = (
-    "Harbor targets currently require local execution or the subprocess backend with access to the host Docker daemon."
+    "Harbor targets currently require the subprocess backend with access to the host Docker daemon."
 )
 _SUBPROCESS_PROVIDER: Literal["subprocess"] = "subprocess"
 
@@ -128,13 +136,11 @@ async def _resolve_gym_environment(
     target: Target | None,
     *,
     workspace: str,
-    async_sdk: AsyncNeMoPlatform | None,
+    async_sdk: AsyncNeMoPlatform,
 ) -> Target | None:
     """Validate and qualify a Gym environment FileSet through the Files service."""
     if not isinstance(target, GymRunnerTarget) or target.environment is None:
         return target
-    if async_sdk is None:
-        raise ValueError("Gym environment FileSet references require a platform connection")
 
     # Qualify ``workspace/name`` now so later steps do not re-parse a relative or fragmented ref.
     try:
@@ -276,7 +282,7 @@ def _harbor_agent_env_from_host(target: HarborRunnerTarget) -> list[str]:
     return list(target.env_secrets)
 
 
-class AgentEvalJob(NemoJob):
+class _AgentEvalJobBase(NemoJob):
     """Run agent evaluation (``AgentEvaluator``) over tasks against a Model/Agent endpoint or runner."""
 
     name: ClassVar[str] = "agent-evaluate"
@@ -285,6 +291,7 @@ class AgentEvalJob(NemoJob):
     input_spec_schema: ClassVar[type[BaseModel] | None] = AgentEvalInputSpec
     spec_schema: ClassVar[type[BaseModel] | None] = AgentEvalSpec
     job_collection_path: ClassVar[str | None] = "/agent-evaluate/jobs"
+    generate_legacy_verbs: ClassVar[bool] = False
 
     @classmethod
     async def to_spec(
@@ -293,7 +300,7 @@ class AgentEvalJob(NemoJob):
         *,
         workspace: str,
         entity_client: object,
-        async_sdk: AsyncNeMoPlatform | None,
+        async_sdk: AsyncNeMoPlatform,
         is_local: bool,
     ) -> BaseModel:
         """Resolve each task's metric references into inline metrics for the canonical spec."""
@@ -303,13 +310,13 @@ class AgentEvalJob(NemoJob):
             if isinstance(input_spec, AgentEvalInputSpec)
             else AgentEvalInputSpec.model_validate_json(input_spec.model_dump_json())
         )
-        entity_client = cast(EntityClient | None, entity_client)
+        entity_client = entity_client if isinstance(entity_client, EntityClient) else None
         # Evaluator references expand before metric resolution. Stored Harbor sources stay
         # pinned in the canonical job and resolve into native tasks during worker preparation.
-        task_inputs = await resolve_agent_eval_tasks(
+        task_inputs = await canonicalize_agent_eval_tasks(
             submit_spec.tasks, workspace=workspace, entity_client=entity_client, target=submit_spec.target
         )
-        if not isinstance(task_inputs, list):
+        if isinstance(task_inputs, (PinnedHarborTaskset, PinnedHarborTaskList)):
             return AgentEvalSpec(
                 tasks=task_inputs,
                 **submit_spec.model_dump(exclude={"tasks"}),
@@ -334,6 +341,8 @@ class AgentEvalJob(NemoJob):
                 )
             )
         if isinstance(submit_spec.target, GymRunnerTarget):
+            # Validate Gym row fields before resolving the environment.
+            # The returned row is only needed later during dataset materialization.
             for task in resolved_tasks:
                 gym_task_row(
                     task_id=task.id,
@@ -363,7 +372,7 @@ class AgentEvalJob(NemoJob):
         spec: BaseModel,
         entity_client: object,
         job_name: str | None,
-        async_sdk: AsyncNeMoPlatform | None,
+        async_sdk: AsyncNeMoPlatform,
         profile: str | None = None,
         options: dict | None = None,
     ) -> PlatformJobSpec:
@@ -393,30 +402,29 @@ class AgentEvalJob(NemoJob):
                 except SandboxUnavailableError as exc:
                     raise PlatformJobCompilationError(str(exc)) from exc
         del workspace
-        platform_spec = compile_agent_eval_job(
-            canonical_spec,
-            profile=profile,
-            use_subprocess=isinstance(execution_profile, SubprocessJobExecutionProfile),
-        )
         if isinstance(canonical_spec.target, HarborRunnerTarget):
-            step = next(iter(platform_spec["steps"]))
-            executor = cast(dict[str, Any], step["executor"])
-            step["executor"] = await cls._resolve_harbor_subprocess_executor(
-                executor=executor,
+            compilation = _compile_agent_eval_cpu_job(canonical_spec, profile=profile)
+            compilation.eval_step["executor"] = await cls._resolve_harbor_subprocess_executor(
+                executor=compilation.executor,
                 async_sdk=async_sdk,
+            )
+            platform_spec = compilation.platform_spec
+        else:
+            platform_spec = compile_agent_eval_job(
+                canonical_spec,
+                profile=profile,
+                use_subprocess=isinstance(execution_profile, SubprocessJobExecutionProfile),
             )
         return platform_spec
 
     @staticmethod
     async def _execution_profile(
         *,
-        async_sdk: AsyncNeMoPlatform | None,
+        async_sdk: AsyncNeMoPlatform,
         profile: str,
         require_pvc_storage: bool = False,
     ) -> BaseExecutionProfile | None:
         """Resolve the profile that Jobs will use for this submission."""
-        if async_sdk is None:
-            return None
         try:
             profiles = (await client_from_platform(async_sdk, AsyncJobsClient).get_execution_profiles()).data()
         except (NemoTransportError, NemoResponseValidationError, InternalServerError) as exc:
@@ -447,14 +455,10 @@ class AgentEvalJob(NemoJob):
 
     @staticmethod
     async def _resolve_harbor_subprocess_executor(
-        *, executor: dict[str, Any], async_sdk: AsyncNeMoPlatform | None
+        *, executor: CPUExecutionProviderSpec, async_sdk: AsyncNeMoPlatform
     ) -> SubprocessExecutionProviderSpec:
         """Resolve Harbor's selected profile to an explicit host subprocess executor."""
-        profile = cast(str, executor["profile"])
-        provider = cast(str, executor["provider"])
-        if async_sdk is None:
-            raise _profile_dependency_unavailable(profile)
-
+        profile = executor.profile
         try:
             profiles = (await client_from_platform(async_sdk, AsyncJobsClient).get_execution_profiles()).data()
         except (NemoTransportError, NemoResponseValidationError, InternalServerError) as exc:
@@ -465,8 +469,7 @@ class AgentEvalJob(NemoJob):
             isinstance(execution_profile, SubprocessJobExecutionProfile) and execution_profile.profile == profile
             for execution_profile in profiles
         ):
-            container = cast(dict[str, Any], executor["container"])
-            command = [*(container.get("entrypoint") or []), *(container.get("command") or [])]
+            command = [*executor.container.entrypoint, *executor.container.command]
             if not command:
                 raise _harbor_backend_error(
                     f"Unable to compile execution profile '{profile}' for subprocess execution: the step command is empty."
@@ -478,7 +481,7 @@ class AgentEvalJob(NemoJob):
             (
                 execution_profile.backend
                 for execution_profile in profiles
-                if execution_profile.profile == profile and execution_profile.provider == provider
+                if execution_profile.profile == profile and execution_profile.provider == executor.provider
             ),
             None,
         )
@@ -498,7 +501,7 @@ class AgentEvalJob(NemoJob):
         return None
 
     @staticmethod
-    def _build_evaluator(client: NemoClient | AsyncNemoClient | None, target: Target | None) -> AgentEvaluator:
+    def _build_evaluator(client: NemoClient | AsyncNemoClient, target: Target | None) -> AgentEvaluator:
         """Construct the evaluator, forwarding the job's platform identity to online inference.
 
         Online generation against a *platform-routed* Model/Agent target must act as the job's
@@ -512,9 +515,8 @@ class AgentEvalJob(NemoJob):
         tests can inject a fake inference seam.
 
         ``client`` is the SDK handle injected into ``run`` — a typed platform client in a submitted
-        job (built by ``get_task_nemo_client``, threading ``NMP_PRINCIPAL`` as on-behalf-of). It is ``None``
-        only for a platformless local run (e.g. offline ``run_local``), which has no identity to
-        forward.
+        job (built by ``get_task_nemo_client``, threading ``NMP_PRINCIPAL`` as on-behalf-of). A
+        platformless in-process run has no identity to forward.
 
         NOTE: bearer-token auth for platform routes in an auth-enabled deployment is not yet
         forwarded (the local/internal path relies on the ``X-NMP-*`` identity headers); see
@@ -522,7 +524,7 @@ class AgentEvalJob(NemoJob):
         """
         identity_headers: dict[str, str] = {}
         url = AgentEvalJob._endpoint_url(target)
-        if client is not None and url is not None and client.is_platform_url(url):
+        if url is not None and client.is_platform_url(url):
             headers = client.default_headers
             identity_headers = {
                 key: value
@@ -631,29 +633,38 @@ class AgentEvalJob(NemoJob):
         result.persist(bundle_dir, write_dashboard=False)
         return AgentEvalResultFiles(bundle_dir=bundle_dir, summary=bundle_dir / SUMMARY_FILE_NAME)
 
-    def run(
+    def _run_sync(
         self,
         config: dict,
         *,
         ctx: JobContext,
-        sdk: NemoClient | NeMoPlatform | None = None,
-        async_sdk: AsyncNemoClient | AsyncNeMoPlatform | None = None,
+        client: NemoClient,
     ) -> dict:
         """Run the agent evaluation locally and persist its result bundle as artifacts."""
-        client = as_nemo_client(sdk)
-        async_client = as_async_nemo_client(async_sdk)
+        with async_client_from_sync_client(client) as async_client:
+            return self._run_with_client(config, ctx=ctx, platform_client=client, async_client=async_client)
+
+    def _run_with_client(
+        self,
+        config: dict,
+        *,
+        ctx: JobContext,
+        platform_client: NemoClient | AsyncNemoClient,
+        async_client: AsyncNemoClient | None,
+    ) -> dict:
+        """Run the agent evaluation with one platform client color chosen by the concrete class."""
         spec = AgentEvalSpec.model_validate(config)
-        if isinstance(spec.tasks, list):
-            tasks = [_to_runtime_task(task) for task in spec.tasks]
-        else:
+        if isinstance(spec.tasks, (PinnedHarborTaskset, PinnedHarborTaskList)):
             from nemo_evaluator.harbor.preparation import prepare_stored_harbor_tasks
 
             tasks = prepare_stored_harbor_tasks(
                 spec.tasks,
                 destination_root=ctx.storage.persistent / "harbor-inputs",
-                sdk=client,
+                sdk=platform_client if isinstance(platform_client, NemoClient) else None,
                 async_sdk=async_client,
             )
+        else:
+            tasks = [_to_runtime_task(task) for task in spec.tasks]
         target, prompt_template, params = self._resolve_target(spec.target, ctx)
         run_config = AgentEvalRunConfig(
             params=params,
@@ -662,9 +673,7 @@ class AgentEvalJob(NemoJob):
             labels=spec.labels,
             fail_fast=spec.fail_fast,
         )
-        # Forward whichever identity is present, preferring async when both are — the same
-        # precedence the SDK-backed dataset resolver uses.
-        evaluator = self._build_evaluator(async_client or client, spec.target)
+        evaluator = self._build_evaluator(platform_client, spec.target)
         result = evaluator.run_sync(tasks=tasks, trials=spec.trials, target=target, config=run_config)
 
         files = self._write_result_files(result, ctx.storage.persistent)
@@ -677,7 +686,7 @@ class AgentEvalJob(NemoJob):
         # otherwise-successful eval — log and continue.
         try:
             persist_agent_eval_result(
-                result, target=spec.target, ctx=ctx, bundle_ref=artifact.artifact_url, async_sdk=async_client
+                result, target=spec.target, ctx=ctx, bundle_ref=artifact.artifact_url, async_client=async_client
             )
         except Exception:
             logger.warning(
@@ -703,3 +712,31 @@ class AgentEvalJob(NemoJob):
             output["publication"] = outcome.model_dump(exclude_none=True)
 
         return output
+
+
+class AgentEvalJob(_AgentEvalJobBase):
+    """Public/local agent-evaluation job that runs through sync typed clients."""
+
+    def run(
+        self,
+        config: dict,
+        *,
+        ctx: JobContext,
+        client: NemoClient,
+    ) -> dict:
+        """Run the agent evaluation locally and persist its result bundle as artifacts."""
+        return self._run_sync(config, ctx=ctx, client=client)
+
+
+class AsyncAgentEvalJob(_AgentEvalJobBase):
+    """Task-container variant that runs agent evaluation through async typed clients."""
+
+    def run(
+        self,
+        config: dict,
+        *,
+        ctx: JobContext,
+        async_client: AsyncNemoClient,
+    ) -> dict:
+        """Run the agent evaluation in a task container and persist async side effects."""
+        return self._run_with_client(config, ctx=ctx, platform_client=async_client, async_client=async_client)
