@@ -68,14 +68,11 @@ def format_adapter_composite(base_prefix: str, adapter_workspace: str, adapter_n
     The single home for the LoRA-composite grammar's *format* (join) side — the inverse
     of :func:`parse_adapters_suffix`. Renders ``{base_prefix}&adapters/{adapter_workspace}/{adapter_name}``.
 
-    ``base_prefix`` is used **verbatim** and is NOT parsed or validated: it may be a
-    workspace-qualified base id (``{workspace}/{base_name}``), a bare name, or an
-    otherwise-unrestricted field. This is deliberate — the two production construction
-    sites (the models-service reconciler's ``_resolve_base_backend_model_id`` output,
-    which may be unqualified, and the IGW proxy's ``default_model_entity``, an
-    unrestricted field) must not raise on an opaque prefix. Owning only the infix join
-    here consolidates the grammar without imposing a ``workspace/base_name`` split that
-    those sites cannot guarantee.
+    ``base_prefix`` is used **verbatim** — not parsed or validated — so the production
+    construction sites (the reconciler's possibly-unqualified base id, the proxy's
+    unrestricted ``default_model_entity``) never raise on an opaque prefix. Owning only
+    the infix join keeps the grammar in one place without imposing a ``workspace/base_name``
+    split those sites cannot guarantee.
 
     Args:
         base_prefix: The base id/prefix, used verbatim as everything before ``&adapters/``.
