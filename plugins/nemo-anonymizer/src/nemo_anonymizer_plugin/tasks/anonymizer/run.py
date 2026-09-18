@@ -16,6 +16,7 @@ from data_designer_nemo.model_provider import (
     get_nmp_provider,
     parse_provider_reference,
 )
+from data_designer_nemo.token_usage import capture_token_usage
 from nemo_anonymizer_plugin.app.input import prepare_anonymizer_input
 from nemo_anonymizer_plugin.app.task_config import AnonymizerStepConfig
 from nemo_anonymizer_plugin.app.upstream_logging import preserve_root_logging
@@ -24,6 +25,8 @@ from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import PlatformJobResults
+from nemo_platform_plugin.job_usage import PlatformJobUsageReporter
+from nemo_platform_plugin.jobs.client import JobsClient
 from nemo_platform_plugin.jobs.constants import (
     EPHEMERAL_TASK_STORAGE_PATH_ENVVAR,
     NEMO_JOB_ID_ENVVAR,
@@ -94,7 +97,8 @@ def _run_with_step_config(
                 artifact_path=storage_path / "anonymizer-artifacts",
             )
         logger.info("Running anonymizer pipeline")
-        result = anonymizer.run(config=request.config, data=prepared_input.input)
+        with capture_token_usage(ctx.usage):
+            result = anonymizer.run(config=request.config, data=prepared_input.input)
     finally:
         prepared_input.cleanup()
 
@@ -193,6 +197,7 @@ def _load_step_config() -> AnonymizerStepConfig:
 def _get_ctx(sdk: NeMoPlatform) -> JobContext:
     workspace = _get_workspace()
     job_name = _get_job_name()
+    client = client_from_platform(sdk, NemoClient)
     storage = StoragePaths(
         ephemeral=Path(_get_required_env(EPHEMERAL_TASK_STORAGE_PATH_ENVVAR)),
         persistent=Path(_get_required_env(PERSISTENT_JOB_STORAGE_PATH_ENVVAR)),
@@ -200,13 +205,18 @@ def _get_ctx(sdk: NeMoPlatform) -> JobContext:
     results = PlatformJobResults(
         workspace=workspace,
         job_name=job_name,
-        client=client_from_platform(sdk, NemoClient),
+        client=client,
     )
     return JobContext(
         workspace=workspace,
         job_id=job_name,
         storage=storage,
         results=results,
+        usage=PlatformJobUsageReporter(
+            job_name=job_name,
+            workspace=workspace,
+            jobs_client=JobsClient.from_client(client),
+        ),
     )
 
 
