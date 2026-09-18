@@ -3,16 +3,11 @@
 
 """Typed request/response models for the deployments-plugin client.
 
-These models mirror the HTTP contract exposed by the ``nemo-deployments`` plugin
+Pure-Pydantic mirrors of the ``nemo-deployments`` HTTP wire contract
 (``/apis/deployments/v2/...``) for Volumes, Deployments, and DeploymentConfigs.
-The plugin remains the authoritative wire-schema owner; this module keeps client
-DTOs independent so the shared ``nemo_platform_plugin`` package does NOT depend on
-``nemo_deployments_plugin`` — that would be a reverse (and cyclic) dependency,
-since the plugin already depends on ``nemo-platform-plugin``.
-
-This mirrors the ``models``/``files``/``secrets`` client-DTO boundary: pure
-Pydantic replicas of the wire shape, no server/plugin imports, no
-Stainless-generated duplicates.
+Kept independent of ``nemo_deployments_plugin`` on purpose: that plugin already
+depends on ``nemo-platform-plugin``, so importing it back would be a dependency
+cycle. Same client-DTO boundary as ``models``/``files``/``secrets``.
 """
 
 from __future__ import annotations

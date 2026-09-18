@@ -3,10 +3,11 @@
 
 """Typed HTTP clients for the deployments-plugin API.
 
-Wraps the endpoint functions from ``deployments.endpoints`` as direct methods
-using the ``method()`` descriptor (the Files/Secrets/Jobs pattern), and layers on
-small ergonomic helpers (``create_*``/``get_*``/``list_*``/``delete_*`` returning
-unwrapped models) for the common consumer path.
+Wraps the ``deployments.endpoints`` functions as methods via the ``method()``
+descriptor (the Files/Secrets/Jobs pattern), plus ergonomic
+``create_*``/``get_*``/``list_*``/``delete_*`` helpers that return unwrapped
+models. ``delete_*`` is a soft-delete (see ``endpoints``): it returns ``None``
+and the caller polls ``get_*`` for teardown.
 
 Usage::
 
@@ -17,10 +18,7 @@ Usage::
     vol = client.create_volume(body=CreateVolumeRequest(name="weights")).data()
     for v in client.list_volumes().items():
         print(v.name, v.status)
-    client.delete_volume(name="weights")   # soft-delete -> reconciler tears down
-
-The plugin's ``DELETE`` routes are soft-deletes (set status ``DELETING`` and return
-``204``); poll ``get_*`` for teardown to complete.
+    client.delete_volume(name="weights")
 """
 
 from __future__ import annotations

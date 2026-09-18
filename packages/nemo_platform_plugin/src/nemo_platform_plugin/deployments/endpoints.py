@@ -3,15 +3,12 @@
 
 """Typed endpoint definitions for the deployments-plugin API.
 
-These are the single source of truth for the HTTP contract the client speaks to
-the ``nemo-deployments`` plugin (paths carry the ``/apis/deployments`` gateway
-prefix). Covers the full CRUD surface for Volumes, Deployments, and
-DeploymentConfigs.
-
-The plugin's ``DELETE`` routes are soft-deletes: they set the entity's status to
-``DELETING`` and return ``204``; the volume/deployment reconciler then tears down
-the backing resource and removes the entity. So ``delete_*`` returns ``None`` and
-the caller polls ``get_*``/``list_*`` for teardown to complete.
+Single source of truth for the HTTP contract (paths carry the
+``/apis/deployments`` gateway prefix) — full CRUD for Volumes, Deployments, and
+DeploymentConfigs. The ``DELETE`` routes are soft-deletes: they set the entity's
+status to ``DELETING`` and return ``204``, then the reconciler tears down the
+backing resource and removes the entity — so ``delete_*`` returns ``None`` and
+the caller polls ``get_*`` for teardown.
 """
 
 from __future__ import annotations
